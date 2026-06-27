@@ -61,7 +61,7 @@ jobs:
         working-directory: tests
         run: npx playwright test --project=chromium
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report
