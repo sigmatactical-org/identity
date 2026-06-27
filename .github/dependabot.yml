@@ -1,4 +1,12 @@
 version: 2
+
+# Public npm only — no GitHub Packages. Without this, Dependabot expects npm.pkg.github.com creds.
+registries:
+  npm-npmjs:
+    type: npm-registry
+    url: https://registry.npmjs.org
+    replaces-base: true
+
 updates:
   - package-ecosystem: cargo
     directory: "/"
@@ -11,12 +19,16 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    registries:
+      - npm-npmjs
 
   - package-ecosystem: npm
     directory: "/tests"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    registries:
+      - npm-npmjs
 
   - package-ecosystem: github-actions
     directory: "/"
