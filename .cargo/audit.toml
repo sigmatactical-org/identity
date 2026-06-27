@@ -1,0 +1,5 @@
+# RUSTSEC-2023-0071: Marvin timing side-channel in the `rsa` crate (no patched release on crates.io).
+# Pulled in by openidconnect for RS256/PS256 JWT verification. This service is an OIDC client:
+# production verifies IdP tokens with public keys from JWKS; RSA private keys are test-only (wiremock).
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]

@@ -111,9 +111,15 @@ App-specific static pages (e.g. `files/exampleapp/`) live under `IDENTITY_FILES_
 
 ## Docker
 
+Images are **runtime-only** Debian distroless (`gcr.io/distroless/cc-debian13:nonroot`). CI and local builds compile on glibc, then package with `scripts/prepare-image-context.sh`:
+
 ```bash
-docker compose -f docker-compose-build.yaml up --build
+./scripts/docker-build.sh build          # build image locally
+./scripts/docker-build.sh compose        # build image for docker-compose-build.yaml
+docker compose -f docker-compose-build.yaml up
 ```
+
+Release: push a `v*` tag (see `.github/workflows/release.yml`) to publish to GHCR and Artifact Registry and deploy to Cloud Run.
 
 ## Upstream
 
@@ -125,3 +131,7 @@ git merge upstream/main
 ```
 
 Remote `upstream` points at [ErikWegner/rust-identity-service](https://github.com/ErikWegner/rust-identity-service).
+
+## License
+
+Licensed **MIT OR Apache-2.0** (see `LICENSE-MIT` and `LICENSE-APACHE` in this directory).

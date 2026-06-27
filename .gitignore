@@ -336,5 +336,6 @@ ASALocalRun/
 *.pem
 !test-fixtures/rsa-private.pem
 files/exampleapp/sample.js
-.cargo/
+.cargo/config.toml
 sigma-theme
+/build

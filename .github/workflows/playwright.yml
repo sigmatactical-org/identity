@@ -1,9 +1,21 @@
-name: Playwright Tests
+name: Playwright
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: playwright-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
 jobs:
   test:
     timeout-minutes: 60
@@ -17,7 +29,9 @@ jobs:
           docker exec -i --user ${UID}:${GID} --workdir /workspace devcontainer-identity-1 /bin/bash -c "cargo build"
       - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
       - name: Install dependencies
         working-directory: ./tests
         run: npm ci
