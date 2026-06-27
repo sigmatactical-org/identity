@@ -4,17 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 concurrency:
-  group: playwright-${{ github.ref }}
+  group: playwright-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 env:
+  RUST_TOOLCHAIN: "1.90.0"
   NODE_VERSION: "22"
+  CARGO_TERM_COLOR: always
 
 jobs:
   test:
@@ -22,33 +23,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run devcontainers, build binary
-        run: |
-          docker compose -f .devcontainer/docker-compose.yml -f .devcontainer/docker-compose.e2e.yml up -d
-          docker compose -f .devcontainer/docker-compose.yml -f .devcontainer/docker-compose.e2e.yml exec identity /bin/bash -c "rustup update stable"
-          docker exec -i --user ${UID}:${GID} --workdir /workspace devcontainer-identity-1 /bin/bash -c "cargo build"
+      - uses: actions/checkout@v4
+        with:
+          repository: sigmatactical-org/sigma-theme
+          path: sigma-theme
+
+      - name: Prepare build
+        run: ./scripts/prepare-local.sh
+
+      - name: Start E2E stack
+        run: ./scripts/e2e-stack.sh up
+
+      - name: Build identity in stack
+        run: ./scripts/e2e-stack.sh build
+
+      - name: Run identity service
+        run: ./scripts/e2e-stack.sh run
+
+      - name: Wait for identity
+        run: ./scripts/e2e-stack.sh wait
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: tests/package-lock.json
-      - name: Install dependencies
-        working-directory: ./tests
+
+      - name: Install Playwright dependencies
+        working-directory: tests
         run: npm ci
-      - name: Install Playwright Browsers
-        working-directory: ./tests
+
+      - name: Install Playwright browsers
+        working-directory: tests
         run: npx playwright install --with-deps
+
       - name: Run Playwright tests
-        working-directory: ./tests
-        run: |
-          docker exec -id --user ${UID}:${GID} --workdir /workspace devcontainer-identity-1 /bin/bash -c "cp .env.e2e-ci .env ; cargo run"
-          export PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/firefox_chromium/
-          npx playwright test --project firefox --project chromium
-          export PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/webkit/
-          npx playwright test --project webkit
+        working-directory: tests
+        run: npx playwright test
+
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: playwright-report
           path: tests/playwright-report/
           retention-days: 30
+
+      - name: Stop E2E stack
+        if: always()
+        run: ./scripts/e2e-stack.sh down
