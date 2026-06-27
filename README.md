@@ -97,23 +97,17 @@ Example app frontend — TypeScript in `ts/src/`, gitignored bundle at `files/ex
 cd ts && npm ci && npm run check && npm run build
 ```
 
-End-to-end:
-
-```bash
-cd tests && npm ci && npx playwright test
-```
-
-Requires the E2E stack (Keycloak, Redis, Traefik TLS). Locally:
+Browser E2E (Playwright, optional):
 
 ```bash
 ./scripts/prepare-local.sh
 ./scripts/e2e-stack.sh up
 ./scripts/e2e-stack.sh build && ./scripts/e2e-stack.sh run && ./scripts/e2e-stack.sh wait
-cd tests && npm ci && npx playwright test
+cd tests && npm ci && npx playwright install --with-deps && npx playwright test
 ./scripts/e2e-stack.sh down
 ```
 
-CI runs the same flow via `.github/workflows/playwright.yml`.
+CI (`.github/workflows/playwright.yml`) runs **Chromium only**; locally you can add `--project=firefox` or `--project=webkit`.
 
 ## File serving
 
