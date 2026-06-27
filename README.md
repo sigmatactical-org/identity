@@ -97,15 +97,23 @@ Example app frontend — TypeScript in `ts/src/`, gitignored bundle at `files/ex
 cd ts && npm ci && npm run check && npm run build
 ```
 
-Browser E2E (Playwright, optional — devcontainer only):
+End-to-end:
 
 ```bash
-cd .devcontainer && docker compose up -d
-# inside the identity container: cp .env.e2e-ci .env && cargo run
-cd tests && npm ci && npx playwright install --with-deps && npx playwright test
+cd tests && npm ci && npx playwright test
 ```
 
-Not run in CI (Keycloak + Traefik TLS stack is dev-only).
+Requires the E2E stack (Keycloak, Redis, Traefik TLS). Locally:
+
+```bash
+./scripts/prepare-local.sh
+./scripts/e2e-stack.sh up
+./scripts/e2e-stack.sh build && ./scripts/e2e-stack.sh run && ./scripts/e2e-stack.sh wait
+cd tests && npm ci && npx playwright test
+./scripts/e2e-stack.sh down
+```
+
+CI runs the same flow via `.github/workflows/playwright.yml`.
 
 ## File serving
 
