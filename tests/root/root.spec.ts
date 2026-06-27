@@ -1,8 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { configuration } from '../conf.ts';
 
-test('test', async ({ page }) => {
-  const conf = await configuration();
-  await page.goto(conf.baseUrl);
+test('renders the home page', async ({ page }) => {
+  await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Sigma Tactical Group' })).toBeVisible();
 });

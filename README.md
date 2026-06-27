@@ -117,15 +117,16 @@ App-specific static pages (e.g. `files/exampleapp/`) live under `IDENTITY_FILES_
 
 Release is entirely in **`.github/workflows/release.yml`**: GitHub Actions builds the Rust binary, `prepare-image-context.sh` copies artifacts into `build/image/`, then `docker build` (COPY-only Dockerfile) pushes to GHCR and Artifact Registry.
 
-The runtime image is Debian 13 distroless (`gcr.io/distroless/cc-debian13:nonroot`). Production images omit the demo SPA under `files/exampleapp/`; local compose bind-mounts `./files` instead.
+The runtime image is Debian 13 distroless (`gcr.io/distroless/cc-debian13:nonroot`). Production images omit the demo SPA under `files/exampleapp/` unless `IDENTITY_IMAGE_INCLUDE_DEMO=1`.
+
+To stage and build the image locally:
 
 ```bash
 ./scripts/docker-build.sh              # stage build/image/ locally
 docker build -f Dockerfile build/image
-docker compose -f docker-compose-build.yaml up   # after building image locally
 ```
 
-Local compose dependencies use Debian bookworm where possible (Redis, echo, Traefik E2E). Keycloak is upstream UBI (dev-only).
+Local dev and E2E dependencies use Debian bookworm where possible (Redis, echo, Traefik). Keycloak is upstream UBI (dev-only).
 
 ## Upstream
 

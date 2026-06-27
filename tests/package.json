@@ -2,7 +2,12 @@
   "name": "identity-e2e-tests",
   "version": "1.0.0",
   "private": true,
-  "scripts": {},
+  "scripts": {
+    "test": "playwright test",
+    "test:ci": "playwright test --project=chromium",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

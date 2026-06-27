@@ -1,43 +1,43 @@
-import { test, expect } from '@playwright/test';
-import { configuration } from '../conf.ts';
-import { loginUser } from '../helper.ts';
+import { test, expect } from "@playwright/test";
 
-test('test', async ({ page }) => {
-  const conf = await configuration();
-  await page.goto(conf.baseUrl + "/exampleapp/");
-  // Start unauthenticated
-  await expect(page.locator('#loginStatus')).toContainText('not authenticated');
+import { loginUser } from "../helper.ts";
 
-  // Make request to echo endpoint
-  await expect(page.locator('#csrftoken')).toBeEmpty();
-  await page.getByRole('button', { name: 'Echo request' }).click();
-  // Proxying request is denied
-  await expect(page.locator('#echoresponse')).toContainText('Missing or invalid CSRF token');
+test.describe("example app proxy", () => {
+  test("requires CSRF token and attaches JWT to proxied requests", async ({
+    page,
+  }) => {
+    await page.goto("/exampleapp/");
+    await expect(page.locator("#loginStatus")).toContainText("not authenticated");
 
-  // Login as user1
-  await page.getByRole('button', { name: 'Login' }).click();
-  await loginUser(page, 'user1');
-  await expect(page.locator('#loginStatus')).toContainText('authenticated');
+    await expect(page.locator("#csrftoken")).toBeEmpty();
+    await page.getByRole("button", { name: "Echo request" }).click();
+    await expect(page.locator("#echoresponse")).toContainText(
+      "Missing or invalid CSRF token",
+    );
 
-  // Make authenticated request to echo endpoint
-  await expect(page.locator('#csrftoken')).toBeEmpty();
-  await page.getByRole('button', { name: 'Echo request' }).click();
-  await expect(page.locator('#echoresponse')).toContainText('Missing or invalid CSRF token');
+    await page.getByRole("button", { name: "Login" }).click();
+    await loginUser(page, "user1");
+    await expect(page.locator("#loginStatus")).toContainText("authenticated");
 
-  // Obtain CSRF token
-  await page.getByRole('button', { name: 'CSRF token' }).click();
-  await expect(page.locator('#csrftoken')).not.toBeEmpty();
+    await expect(page.locator("#csrftoken")).toBeEmpty();
+    await page.getByRole("button", { name: "Echo request" }).click();
+    await expect(page.locator("#echoresponse")).toContainText(
+      "Missing or invalid CSRF token",
+    );
 
-  // Make authenticated request to echo endpoint with CSRF token
-  await page.getByRole('button', { name: 'Echo request' }).click();
+    await page.getByRole("button", { name: "CSRF token" }).click();
+    await expect(page.locator("#csrftoken")).not.toBeEmpty();
 
-  // Request was successful
-  await expect(page.locator('#echoresponse')).toContainText('POST request at //echorequest');
+    await page.getByRole("button", { name: "Echo request" }).click();
+    await expect(page.locator("#echoresponse")).toContainText(
+      "POST request at /echorequest",
+    );
+    await expect(page.locator("#echoresponse")).toContainText(
+      "authorization: Bearer eyJ",
+    );
 
-  // JWT was sent
-  await expect(page.locator('#echoresponse')).toContainText('authorization: Bearer eyJhb');
-
-  await page.getByRole('button', { name: 'Logout' }).click();
-  await expect(page.locator('#loginStatus')).toContainText('not authenticated');
-  await expect(page.locator('#csrftoken')).toBeEmpty();
+    await page.getByRole("button", { name: "Logout" }).click();
+    await expect(page.locator("#loginStatus")).toContainText("not authenticated");
+    await expect(page.locator("#csrftoken")).toBeEmpty();
+  });
 });

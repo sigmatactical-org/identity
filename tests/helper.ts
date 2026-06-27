@@ -1,9 +1,60 @@
-import { Page } from "@playwright/test";
+import { expect, type Cookie, type Page, type APIRequestContext } from "@playwright/test";
 
-export type KnownUsers = 'user1';
+import { configuration } from "./conf.ts";
+
+export type KnownUsers = "user1";
+
+const credentials: Record<KnownUsers, { username: string; password: string }> = {
+  user1: { username: "user1", password: "user1" },
+};
 
 export const loginUser = async (page: Page, user: KnownUsers) => {
-  await page.getByRole('textbox', { name: 'Username or email' }).fill('user1');
-  await page.getByRole('textbox', { name: 'Password' }).fill('user1');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-}
+  const { username, password } = credentials[user];
+  await page.getByRole("textbox", { name: "Username or email" }).fill(username);
+  await page.getByRole("textbox", { name: "Password" }).fill(password);
+  await page.getByRole("button", { name: "Sign In" }).click();
+};
+
+export const loginViaExampleApp = async (page: Page, user: KnownUsers = "user1") => {
+  const conf = await configuration();
+  await page.goto(`${conf.baseUrl}/exampleapp/`);
+  await page.getByRole("button", { name: "Login" }).click();
+  await page.getByRole("textbox", { name: "Username or email" }).waitFor();
+  await loginUser(page, user);
+  await expect(page.locator("#loginStatus")).toContainText("authenticated", {
+    timeout: 15_000,
+  });
+};
+
+export const cookieHeader = (cookies: Cookie[]) =>
+  cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+
+export const fetchCsrfToken = async (
+  request: APIRequestContext,
+  cookies: Cookie[],
+) => {
+  const conf = await configuration();
+  const response = await request.post(`${conf.baseUrl}/auth/csrftoken`, {
+    headers: { cookie: cookieHeader(cookies) },
+  });
+  expect(response.ok()).toBeTruthy();
+  const body = (await response.json()) as { token: string };
+  return body.token;
+};
+
+export const authenticatedProxyRequest = async (
+  request: APIRequestContext,
+  cookies: Cookie[],
+  csrfToken: string,
+  path: string,
+  data?: string,
+) => {
+  const conf = await configuration();
+  return request.post(`${conf.baseUrl}/api${path}`, {
+    headers: {
+      cookie: cookieHeader(cookies),
+      "X-CSRF-TOKEN": csrfToken,
+    },
+    data,
+  });
+};

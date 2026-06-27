@@ -16,7 +16,7 @@ cmd="${1:-}"
 case "$cmd" in
   up)
     hosts_keycloak
-    "${COMPOSE[@]}" up -d
+    "${COMPOSE[@]}" up -d --build
     ;;
   down)
     "${COMPOSE[@]}" down -v

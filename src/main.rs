@@ -1,5 +1,5 @@
-use sigma_identity::run;
 use mimalloc::MiMalloc;
+use sigma_identity::run;
 use tracing::{error, trace};
 
 #[global_allocator]
