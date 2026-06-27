@@ -13,6 +13,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      # tower-sessions-redis-store 0.16 implements SessionStore for tower-sessions 0.14 only.
+      - dependency-name: tower-sessions
+        versions: [">=0.15.0"]
+      # rand 0.10 breaks sample_iter / Rng usage in src/auth/mod.rs.
+      - dependency-name: rand
+        versions: [">=0.10.0"]
 
   - package-ecosystem: npm
     directory: "/ts"
