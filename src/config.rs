@@ -24,6 +24,13 @@ pub fn var_optional(name: &str) -> Option<String> {
         .or_else(|| env::var(format!("RIDSER_{name}")).ok())
 }
 
+/// Listen port: `IDENTITY_BIND_PORT`, then Cloud Run `PORT`, then default `3000`.
+pub fn listen_port() -> String {
+    var_optional("BIND_PORT")
+        .or_else(|| std::env::var("PORT").ok())
+        .unwrap_or_else(|| String::from("3000"))
+}
+
 pub fn is_production() -> bool {
     matches!(
         var_optional("ENV")

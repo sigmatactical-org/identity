@@ -1,4 +1,5 @@
 services:
+  # Production image: Debian 13 distroless (see Dockerfile). Redis below: Debian bookworm.
   identity:
     build:
       context: build/image
@@ -7,8 +8,9 @@ services:
       - redis
       - keycloak
     environment:
+      - PORT=3000
       - IDENTITY_BIND_PORT=3000
-      - RUST_LOG=identity=debug,info
+      - RUST_LOG=sigma_identity=debug,info
       - IDENTITY_PROXY_TARGET=http://echo:3000/api
       - IDENTITY_SESSION_REFRESH_THRESHOLD=15
       - IDENTITY_OIDC_ISSUER_URL=http://172.17.0.1:8084/realms/multcorp
@@ -27,11 +29,14 @@ services:
       - "3000:3000"
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-bookworm
 
   echo:
-    image: erikwegner/rsecho:release-1.0.0
+    build:
+      context: .devcontainer/echo
+      dockerfile: Dockerfile
 
+  # Dev-only: upstream Keycloak image (Red Hat UBI base; no official Debian image).
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.0
     command:

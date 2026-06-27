@@ -233,7 +233,7 @@ mod tests {
             .with_env_filter(
                 EnvFilter::builder()
                     .with_default_directive(
-                        "identity=debug".parse().expect("Directive should parse"),
+                        "sigma_identity=debug".parse().expect("Directive should parse"),
                     )
                     .from_env_lossy(),
             )

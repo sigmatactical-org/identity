@@ -37,13 +37,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: sigmatactical-org/sigma-theme
-          path: sigma-theme
+          path: theme
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: |
-            sigma-theme/ts/package-lock.json
+            theme/ts/package-lock.json
             ts/package-lock.json
       - name: Prepare build
         run: ./scripts/prepare-local.sh
@@ -60,13 +60,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: sigmatactical-org/sigma-theme
-          path: sigma-theme
+          path: theme
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: |
-            sigma-theme/ts/package-lock.json
+            theme/ts/package-lock.json
             ts/package-lock.json
       - name: Prepare build
         run: ./scripts/prepare-local.sh

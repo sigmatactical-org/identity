@@ -4,15 +4,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'identity'",
+            "name": "Debug executable 'sigma-identity'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=identity",
-                    "--package=identity"
+                    "--bin=sigma-identity",
+                    "--package=sigma-identity"
                 ],
                 "filter": {
-                    "name": "identity",
+                    "name": "sigma-identity",
                     "kind": "bin"
                 }
             },
@@ -22,16 +22,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'identity'",
+            "name": "Debug unit tests in executable 'sigma-identity'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=identity",
-                    "--package=identity"
+                    "--bin=sigma-identity",
+                    "--package=sigma-identity"
                 ],
                 "filter": {
-                    "name": "identity",
+                    "name": "sigma-identity",
                     "kind": "bin"
                 }
             },
@@ -40,7 +40,7 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "identity=debug,info",
+                "RUST_LOG": "sigma_identity=debug,info",
                 "IDENTITY_TEST_REDIS_URL": "localhost:6379"
             }
         }

@@ -1,4 +1,4 @@
-# identity
+# sigma-identity
 
 Backend-for-frontend identity service for Sigma Tactical Group. Handles OpenID Connect login, server-side JWT sessions (http-only cookie), CSRF-protected API proxying, and static/SPA file serving.
 
@@ -66,7 +66,7 @@ cd .devcontainer
 docker compose up -d
 docker compose exec -u "${UID}:${GID}" -it identity /bin/bash
 rustup update stable
-export RUST_LOG=identity=debug,info
+export RUST_LOG=sigma_identity=debug,info
 cp .env.default .env
 cargo run
 ```
@@ -75,11 +75,11 @@ Keycloak, Redis, Traefik, and an echo backend are included in the compose stack.
 
 ### Local (Rust only)
 
-Requires Redis, an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
+Requires Redis (`redis-server` on `127.0.0.1:6379`), an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
 
 ```bash
 ./scripts/prepare-local.sh   # clone/link sigma-theme, build TS, patch cargo
-cp .env.default .env
+cp .env.default .env         # IDENTITY_REDIS_URL=redis://127.0.0.1:6379/
 cargo run
 ```
 
@@ -111,19 +111,21 @@ CI (`.github/workflows/playwright.yml`) runs **Chromium only**; locally you can 
 
 ## File serving
 
-App-specific static pages (e.g. `files/exampleapp/`) live under `IDENTITY_FILES_DIR`. Shared chrome — CSS, JS, home page, favicon — comes from the [`sigma-theme`](../sigma-theme) crate (embedded at compile time).
+App-specific static pages (e.g. `files/exampleapp/`) live under `IDENTITY_FILES_DIR`. Shared chrome — CSS, JS, home page, favicon — comes from the [`sigma-theme`](../theme) crate (embedded at compile time).
 
 ## Docker
 
-Images are **runtime-only** Debian distroless (`gcr.io/distroless/cc-debian13:nonroot`). CI and local builds compile on glibc, then package with `scripts/prepare-image-context.sh`:
+Release is entirely in **`.github/workflows/release.yml`**: GitHub Actions builds the Rust binary, `prepare-image-context.sh` copies artifacts into `build/image/`, then `docker build` (COPY-only Dockerfile) pushes to GHCR and Artifact Registry.
+
+The runtime image is Debian 13 distroless (`gcr.io/distroless/cc-debian13:nonroot`). Production images omit the demo SPA under `files/exampleapp/`; local compose bind-mounts `./files` instead.
 
 ```bash
-./scripts/docker-build.sh build          # build image locally
-./scripts/docker-build.sh compose        # build image for docker-compose-build.yaml
-docker compose -f docker-compose-build.yaml up
+./scripts/docker-build.sh              # stage build/image/ locally
+docker build -f Dockerfile build/image
+docker compose -f docker-compose-build.yaml up   # after building image locally
 ```
 
-Release: push a `v*` tag (see `.github/workflows/release.yml`) to publish to GHCR and Artifact Registry and deploy to Cloud Run.
+Local compose dependencies use Debian bookworm where possible (Redis, echo, Traefik E2E). Keycloak is upstream UBI (dev-only).
 
 ## Upstream
 

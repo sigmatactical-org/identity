@@ -1,3 +1,6 @@
+# Production images are built only from `build/image/` (see scripts/prepare-image-context.sh).
+# This file applies if `docker build` is accidentally run from the repo root.
 .env
 Dockerfile
 /target
+/build

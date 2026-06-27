@@ -97,10 +97,10 @@ impl ProxyConfig {
 }
 
 pub(crate) async fn port_listener() -> Result<tokio::net::TcpListener> {
-    let port_str = config::var_optional("BIND_PORT").unwrap_or_else(|| String::from("3000"));
+    let port_str = config::listen_port();
     let port_parsed = port_str
         .parse::<u16>()
-        .context("BIND_PORT must be a number between 1 and 65535")?;
+        .context("BIND_PORT/PORT must be a number between 1 and 65535")?;
 
     let bind_addr = config::var_optional("BIND_ADDRESS").unwrap_or_else(|| "::".to_string());
     let addr: SocketAddr = if bind_addr.contains(':') {
@@ -291,7 +291,11 @@ async fn proxy(
 }
 
 fn security_headers(router: Router) -> Router {
-    router
+    const CSP: &str = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; \
+        img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; \
+        connect-src 'self'; form-action 'self'; upgrade-insecure-requests";
+
+    let mut router = router
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
             HeaderValue::from_static("nosniff"),
@@ -306,10 +310,25 @@ fn security_headers(router: Router) -> Router {
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("content-security-policy"),
-            HeaderValue::from_static(
-                "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'",
-            ),
+            HeaderValue::from_static(CSP),
         ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),
+            HeaderValue::from_static("same-origin"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("permissions-policy"),
+            HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+        ));
+
+    if config::is_production() {
+        router = router.layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("strict-transport-security"),
+            HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
+        ));
+    }
+
+    router
 }
 
 pub(crate) fn app(

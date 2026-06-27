@@ -4,11 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-THEME_PATH="sigma-theme"
-if [[ -d ../sigma-theme/ts ]]; then
-  THEME_PATH="../sigma-theme"
-elif [[ ! -d sigma-theme/ts ]]; then
-  git clone --depth 1 https://github.com/sigmatactical-org/sigma-theme.git sigma-theme
+THEME_PATH="theme"
+if [[ -d ../theme/ts ]]; then
+  THEME_PATH="../theme"
+elif [[ ! -d theme/ts ]]; then
+  git clone --depth 1 https://github.com/sigmatactical-org/sigma-theme.git theme
 fi
 
 mkdir -p .cargo

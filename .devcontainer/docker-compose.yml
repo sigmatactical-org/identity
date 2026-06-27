@@ -1,6 +1,9 @@
 services:
   identity:
-    image: mcr.microsoft.com/devcontainers/rust:1-1-bullseye
+    image: mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+    environment:
+      # Compose network hostname; overrides .env when running inside the devcontainer.
+      - IDENTITY_REDIS_URL=redis://redis:6379/
     ports:
       - "8101:8101"
       - "3000:3000"
@@ -9,11 +12,14 @@ services:
     command: /bin/sh -c "while sleep 1000; do :; done"
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-bookworm
 
   echo:
-    image: erikwegner/rsecho:release-1.0.0
+    build:
+      context: echo
+      dockerfile: Dockerfile
 
+  # Dev-only: upstream Keycloak image (Red Hat UBI base; no official Debian image).
   keycloak:
     image: quay.io/keycloak/keycloak:26.3.2
     command:

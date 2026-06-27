@@ -1,6 +1,8 @@
 services:
   traefik:
-    image: traefik:v3.5
+    build:
+      context: traefik
+      dockerfile: Dockerfile
     ports:
       - "8101:8101"
       - "3000:3000"

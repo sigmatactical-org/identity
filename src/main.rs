@@ -1,4 +1,4 @@
-use identity::run;
+use sigma_identity::run;
 use mimalloc::MiMalloc;
 use tracing::{error, trace};
 
