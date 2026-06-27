@@ -1,0 +1,32 @@
+services:
+  traefik:
+    build:
+      context: traefik
+      dockerfile: Dockerfile
+    ports:
+      - "8101:8101"
+      - "3000:3000"
+    command:
+      - "--providers.file.filename=/routing.yaml"
+      - "--entrypoints.keycloak.address=:8101"
+      - "--entrypoints.keycloak.http.tls=true"
+      - "--entrypoints.identity.address=:3000"
+      - "--entrypoints.identity.http.tls=true"
+      - "--log.level=DEBUG"
+      - "--accesslog=true"
+    volumes:
+      - ./traefik.yaml:/routing.yaml:ro
+    depends_on:
+      - identity
+      - keycloak
+    networks:
+      default:
+        aliases:
+          - keycloak.localhost
+  identity:
+    ports: !reset []
+  keycloak:
+    environment:
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_HTTP_ENABLED=true
+      - KC_HOSTNAME=https://keycloak.localhost:8101/

@@ -1,0 +1,44 @@
+version: 2
+
+# Public npm only — no GitHub Packages. Without this, Dependabot expects npm.pkg.github.com creds.
+registries:
+  npm-npmjs:
+    type: npm-registry
+    url: https://registry.npmjs.org
+    replaces-base: true
+
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    ignore:
+      # tower-sessions-redis-store 0.16 implements SessionStore for tower-sessions 0.14 only.
+      - dependency-name: tower-sessions
+        versions: [">=0.15.0"]
+      # rand 0.10 breaks sample_iter / Rng usage in src/auth/mod.rs.
+      - dependency-name: rand
+        versions: [">=0.10.0"]
+
+  - package-ecosystem: npm
+    directory: "/ts"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    registries:
+      - npm-npmjs
+
+  - package-ecosystem: npm
+    directory: "/tests"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    registries:
+      - npm-npmjs
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10

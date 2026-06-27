@@ -1,0 +1,34 @@
+services:
+  identity:
+    image: mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+    environment:
+      # Compose network hostname; overrides .env when running inside the devcontainer.
+      - IDENTITY_REDIS_URL=redis://redis:6379/
+    ports:
+      - "8101:8101"
+      - "3000:3000"
+    volumes:
+      - ..:/workspace:cached
+    command: /bin/sh -c "while sleep 1000; do :; done"
+
+  redis:
+    image: redis:7-bookworm
+
+  echo:
+    build:
+      context: echo
+      dockerfile: Dockerfile
+
+  # Dev-only: upstream Keycloak image (Red Hat UBI base; no official Debian image).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.2
+    command:
+      - start-dev
+      - --import-realm
+    network_mode: "service:identity"
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_HTTP_PORT=8101
+    volumes:
+      - ../dev_realm.json:/opt/keycloak/data/import/dev_realm.json
