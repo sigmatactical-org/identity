@@ -4,15 +4,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'ridser'",
+            "name": "Debug executable 'identity'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=ridser",
-                    "--package=ridser"
+                    "--bin=identity",
+                    "--package=identity"
                 ],
                 "filter": {
-                    "name": "ridser",
+                    "name": "identity",
                     "kind": "bin"
                 }
             },
@@ -22,16 +22,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'ridser'",
+            "name": "Debug unit tests in executable 'identity'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=ridser",
-                    "--package=ridser"
+                    "--bin=identity",
+                    "--package=identity"
                 ],
                 "filter": {
-                    "name": "ridser",
+                    "name": "identity",
                     "kind": "bin"
                 }
             },
@@ -40,7 +40,8 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RIDSER_REDIS_TEST_URL": "localhost:6379"
+                "RUST_LOG": "identity=debug,info",
+                "IDENTITY_TEST_REDIS_URL": "localhost:6379"
             }
         }
     ]

@@ -1,32 +1,26 @@
 services:
-  ridser:
-    image: erikwegner/ridser
-    build: .
+  identity:
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       - redis
       - keycloak
     environment:
-      - RIDSER_BIND_PORT=3000
-      # - RIDSER_BIND_ADDRESS="::"
-      - RUST_LOG=ridser=debug,info
-      - RIDSER_PROXY_TARGET=http://echo:3000/api
-      - RIDSER_SESSION_REFRESH_THRESHOLD=15
-      # OpenID Connect Issuer
-      - RIDSER_OIDC_ISSUER_URL=http://172.17.0.1:8084/realms/multcorp
-      # Client with user data access
-      - RIDSER_OIDC_CLIENT_ID=ridser
-      # Secret for client with user data access
-      - RIDSER_OIDC_CLIENT_SECRET=8d476311-2577-4104-b9e4-7dc2cc381be8
-      # Optional: Override authorization endpoint
-      # Redis cache configuration
-      - RIDSER_REDIS_URL=redis://redis/
-      # Session secret, length in bytes: 64
-      - RIDSER_SESSION_SECRET=iIdh4cBut27H6Y5MCk9782bE3Nk56JVsahla1vhILE3tizmX5nP5riOhV8IgorzI
-      - RIDSER_LOGOUT_SSO_URI=http://localhost:8084/realms/multcorp/protocol/openid-connect/logout
-      # Comma separated list of allowed redirect uris after successful login. A trailing asterisk is allowed for wildcard matches.
-      - RIDSER_LOGIN_REDIRECT_APP_URIS=http://localhost:3000/*,
-      # Comma separated list of allowed redirect uris after successful logout. Only exact matches are allowed.
-      - RIDSER_LOGOUT_REDIRECT_APP_URIS=http://localhost:3000/exampleapp/
+      - IDENTITY_BIND_PORT=3000
+      - RUST_LOG=identity=debug,info
+      - IDENTITY_PROXY_TARGET=http://echo:3000/api
+      - IDENTITY_SESSION_REFRESH_THRESHOLD=15
+      - IDENTITY_OIDC_ISSUER_URL=http://172.17.0.1:8084/realms/multcorp
+      - IDENTITY_OIDC_CLIENT_ID=identity
+      - IDENTITY_OIDC_CLIENT_SECRET=8d476311-2577-4104-b9e4-7dc2cc381be8
+      - IDENTITY_REDIS_URL=redis://redis/
+      - IDENTITY_SESSION_SECRET=iIdh4cBut27H6Y5MCk9782bE3Nk56JVsahla1vhILE3tizmX5nP5riOhV8IgorzI
+      - IDENTITY_LOGOUT_SSO_URI=http://localhost:8084/realms/multcorp/protocol/openid-connect/logout
+      - IDENTITY_LOGIN_REDIRECT_APP_URIS=http://localhost:3000/*
+      - IDENTITY_OIDC_REDIRECT_URIS=http://localhost:3000/auth/callback
+      - IDENTITY_LOGOUT_REDIRECT_APP_URIS=http://localhost:3000/exampleapp/
+      - IDENTITY_LOGOUT_OIDC_REDIRECT_URIS=http://localhost:3000/auth/logoutcallback
     volumes:
       - ./files:/files:ro
     ports:

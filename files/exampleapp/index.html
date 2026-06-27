@@ -1,61 +1,88 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sigma Tactical Group</title>
 
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" href="/favicon.png" sizes="32x32">
-    <link rel="icon" type="image/png" href="/favicon.png" sizes="96x96">
-    <title>Example APP</title>
-    <style>
-        body {
-            font-size: 200%;
-        }
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/sigma-favicon-32.png" />
 
-        #echoresponse {
-            font-size: 50%;
-        }
-    </style>
-</head>
+    <link rel="stylesheet" href="/static/vendor/bootstrap-5.3.3/bootstrap.min.css" />
+    <link rel="stylesheet" href="/static/css/site.css" />
+    <link rel="stylesheet" href="/static/css/sigma-dial.css" />
+    <link rel="stylesheet" href="app-demo.css" />
+  </head>
 
-<body>
-    <p>
-        This is the example app.
-    </p>
-    <p>
-        This is the example app served from the <code>files/exampleapp/</code> directory.
-        Visit <a
-            href="https://github.com/ErikWegner/rust-identity-service">https://github.com/ErikWegner/rust-identity-service</a>
-        for more information.
-    </p>
-    <p>
-        Login-Status: <span id="loginStatus"></span><br />
-        CSRF-Token: <span id="csrftoken"></span><br />
-    </p>
-    <div>
-        <h2>Actions</h2>
-        <p>
-            <button id="login" type="button">Login</button>
-            <button id="logout" type="button">Logout</button>
-            <button id="refresh" type="button">Refresh</button>
-            <button id="requestcsrftoken" type="button">CSRF-Token</button>
-            <button id="echorequest" type="button">Echo request</button>
-        </p>
-    </div>
-    <p>
-        <div style="display: flex;">
-            <div>
-                Message: <br />
-                <textarea id="userinput" cols="40" rows="15"></textarea>
-            </div>
-            <div>
-                Response: <br />
-                <div id="echoresponse"></div>
-            </div>
+  <body>
+    <nav class="navbar navbar-expand">
+      <div class="container">
+        <a class="navbar-brand" href="/">
+          <img src="/static/sigma-favicon-32.png" alt="" />
+          <span class="brand-wordmark">Sigma Tactical Group</span>
+        </a>
+      </div>
+    </nav>
+
+    <main class="app-main">
+      <div class="page-bg" aria-hidden="true">
+        <div class="hero-bg">
+          <div id="sigma-dial-root"></div>
         </div>
-    </p>
-    <script type="module" src="sample.js"></script>
-</body>
+        <div class="sigma-bg">
+          <svg class="sigma-bg-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <radialGradient id="emberGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ff8a3a" stop-opacity="1" />
+                <stop offset="22%" stop-color="#ff3a00" stop-opacity="0.85" />
+                <stop offset="55%" stop-color="#d40000" stop-opacity="0.34" />
+                <stop offset="100%" stop-color="#900000" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <path d="M88.00 10.00 L -2.81 10.00 L 47.19 50.00 L -2.81 90.00 L 88.00 90.00 L 88.00 74.00 L 87.66 72.07 L 87.11 70.29 L 86.36 68.68 L 85.40 67.22 L 84.23 65.93 L 82.86 64.79 L 81.28 63.82 L 79.50 63.00 L 71.00 74.00 L 42.81 74.00 L 72.81 50.00 L 42.81 26.00 L 71.00 26.00 L 79.50 37.00 L 81.28 36.18 L 82.86 35.21 L 84.23 34.07 L 85.40 32.77 L 86.36 31.32 L 87.11 29.71 L 87.66 27.93 L 88.00 26.00 Z" fill="#525a63" />
+            <g id="sigma-eye-glow">
+              <circle id="sigma-eye-core" cx="66" cy="36" r="11" fill="url(#emberGlow)" />
+              <circle cx="66" cy="36" r="4.2" fill="url(#emberGlow)" />
+              <circle cx="66" cy="36" r="2.4" fill="#ff1e00" fill-opacity="0.55" />
+              <circle cx="66" cy="36" r="1.05" fill="#ffcf86" />
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div class="page-foreground">
+        <div class="container app-demo">
+          <p class="status-line">
+            Login status: <strong id="loginStatus"></strong><br />
+            CSRF token: <code id="csrftoken"></code>
+          </p>
+          <h2>Actions</h2>
+          <div class="actions">
+            <button id="login" type="button" class="btn btn-primary btn-sm">Login</button>
+            <button id="logout" type="button" class="btn btn-outline-secondary btn-sm">Logout</button>
+            <button id="refresh" type="button" class="btn btn-outline-secondary btn-sm">Refresh</button>
+            <button id="requestcsrftoken" type="button" class="btn btn-outline-secondary btn-sm">CSRF token</button>
+            <button id="echorequest" type="button" class="btn btn-outline-secondary btn-sm">Echo request</button>
+          </div>
+          <div class="echo-grid">
+            <div class="echo-col">
+              <label for="userinput" class="form-label">Message</label>
+              <textarea id="userinput"></textarea>
+            </div>
+            <div class="echo-col">
+              <label for="echoresponse" class="form-label">Response</label>
+              <div id="echoresponse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
 
+    <script src="/static/js/sigma-dial.js" defer></script>
+    <script type="module" src="sample.js"></script>
+
+    <footer>
+      <div class="container">
+        <div class="footer-copyright">&copy; 2026 Sigma Tactical Group</div>
+      </div>
+    </footer>
+  </body>
 </html>

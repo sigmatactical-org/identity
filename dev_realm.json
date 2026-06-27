@@ -259,7 +259,7 @@
         "containerId" : "a6f90307-3d8a-484f-8380-b46765d924d5",
         "attributes" : { }
       } ],
-      "ridser" : [ ],
+      "identity" : [ ],
       "account" : [ {
         "id" : "50b9416d-249b-4591-9765-879b6857e0ba",
         "name" : "view-consent",
@@ -402,11 +402,11 @@
   "users" : [ {
     "id" : "cfee6d26-05f9-4ff9-ae46-4199a389076e",
     "createdTimestamp" : 1637931174620,
-    "username" : "service-account-ridser",
+    "username" : "service-account-identity",
     "enabled" : true,
     "totp" : false,
     "emailVerified" : false,
-    "serviceAccountClientId" : "ridser",
+    "serviceAccountClientId" : "identity",
     "credentials" : [ ],
     "disableableCredentialTypes" : [ ],
     "requiredActions" : [ ],
@@ -648,7 +648,7 @@
     "optionalClientScopes" : [ "address", "phone", "offline_access", "microprofile-jwt" ]
   }, {
     "id" : "a7336c56-ba7f-489e-992e-fed9abcfa7a9",
-    "clientId" : "ridser",
+    "clientId" : "identity",
     "name" : "",
     "description" : "",
     "rootUrl" : "",

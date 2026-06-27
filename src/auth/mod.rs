@@ -1,3 +1,4 @@
+pub mod allowlist;
 mod callback;
 mod csrftoken;
 mod login;
@@ -26,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_sessions_redis_store::fred::clients::Pool;
 
-use crate::session::RidserSessionLayer;
+use crate::session::IdentitySessionLayer;
 
 use self::logout::logout_callback;
 use self::{
@@ -138,7 +139,7 @@ impl FromRef<AppConfigurationState> for LogoutAppSettings {
 
 pub(crate) fn auth_routes(
     oidc_client: OIDCClient,
-    session_layer: &RidserSessionLayer,
+    session_layer: &IdentitySessionLayer,
     client: Pool,
     remaining_secs_threshold: u64,
     app_config: AppConfigurationState,
@@ -218,8 +219,9 @@ mod tests {
         matchers::{method, path},
     };
 
-    use crate::session::{RidserSessionLayer, SessionSetup, redis_cons};
+    use crate::session::{IdentitySessionLayer, SessionSetup, redis_cons};
 
+    use super::allowlist::UriAllowlist;
     use super::{
         AppConfigurationState, LoginAppSettings, OIDCClient, auth_routes,
         logout::{LogoutAppSettings, LogoutBehavior},
@@ -230,13 +232,21 @@ mod tests {
         tracing_subscriber::fmt()
             .with_env_filter(
                 EnvFilter::builder()
-                    .with_default_directive("ridser=debug".parse().expect("Directive should parse"))
+                    .with_default_directive(
+                        "identity=debug".parse().expect("Directive should parse"),
+                    )
                     .from_env_lossy(),
             )
             .init();
         let _ = LogTracer::init();
         Arc::new(true)
     });
+
+    const TEST_RSA_PEM: &str = include_str!("../../test-fixtures/rsa-private.pem");
+
+    fn test_rsa_pem() -> &'static str {
+        TEST_RSA_PEM
+    }
 
     fn oidc_body(issuer: &str) -> String {
         let provider_metadata = CoreProviderMetadata::new(
@@ -302,14 +312,13 @@ mod tests {
     }
 
     fn oidc_keys() -> String {
-        let rsa_pem = include_bytes!("../../test.pem");
-        let rsa_pem: String = String::from_utf8(rsa_pem.to_vec()).expect("Read test.pem");
+        let rsa_pem = test_rsa_pem();
         let jwks = CoreJsonWebKeySet::new(vec![
             // RSA keys may also be constructed directly using CoreJsonWebKey::new_rsa(). Providers
             // aiming to support other key types may provide their own implementation of the
             // JsonWebKey trait or submit a PR to add the desired support to this crate.
             CoreRsaPrivateSigningKey::from_pem(
-                &rsa_pem,
+                rsa_pem,
                 Some(JsonWebKeyId::new("key1".to_string())),
             )
             .expect("Invalid RSA private key")
@@ -330,8 +339,7 @@ mod tests {
         openidconnect::core::CoreJweContentEncryptionAlgorithm,
         CoreJwsSigningAlgorithm,
     > {
-        let rsa_pem = include_bytes!("../../test.pem");
-        let rsa_pem: String = String::from_utf8(rsa_pem.to_vec()).expect("Read test.pem");
+        let rsa_pem = test_rsa_pem();
         CoreIdToken::new(
             CoreIdTokenClaims::new(
                 // Specify the issuer URL for the OpenID Connect Provider.
@@ -368,7 +376,7 @@ mod tests {
             // HMAC-based signing algorithm, the UTF-8 representation of the client secret should
             // be used as the HMAC key.
             &CoreRsaPrivateSigningKey::from_pem(
-                &rsa_pem,
+                rsa_pem,
                 Some(JsonWebKeyId::new("key1".to_string())),
             )
             .expect("Invalid RSA private key"),
@@ -416,7 +424,7 @@ mod tests {
         mock_server: MockServer,
         oidc_client: OIDCClient,
         redis_pool: Pool,
-        session_layer: RidserSessionLayer,
+        session_layer: IdentitySessionLayer,
     }
 
     impl MockSetup {
@@ -450,8 +458,8 @@ mod tests {
 
             let session_secret: String = random_alphanumeric_string(64);
             let (session_store, redis_pool) = redis_cons(
-                std::env::var("RIDSER_TEST_REDIS_URL")
-                    .unwrap_or_else(|_| "redis://redis:6379/".to_string())
+                crate::config::var_optional("TEST_REDIS_URL")
+                    .unwrap_or_else(|| "redis://127.0.0.1:6379/".to_string())
                     .as_ref(),
             )
             .await
@@ -482,18 +490,24 @@ mod tests {
         pub fn router(&self) -> Router {
             let redis_pool = self.redis_pool.clone();
             let app_config = AppConfigurationState {
-                login_app_settings: LoginAppSettings::new(vec![
-                    "http://example.com".to_string(),
-                    "http://example.org/my/app/*".to_string(),
-                ]),
+                login_app_settings: LoginAppSettings::new(
+                    vec![
+                        "http://example.com".to_string(),
+                        "http://example.org/my/app/*".to_string(),
+                    ],
+                    vec!["http://example.com/auth/callback".to_string()],
+                ),
                 logout_app_settings: LogoutAppSettings {
                     client_id: self.client_id.clone(),
                     logout_uri: format!("{}/logout", self.mock_server.uri()),
                     _behavior: LogoutBehavior::FrontChannelLogoutWithIdToken,
-                    allowed_app_uris_match: vec![
+                    allowed_app_uris: UriAllowlist::new(vec![
                         "http://logout.example.com".to_string(),
                         "http://example.org/it/index".to_string(),
-                    ],
+                    ]),
+                    allowed_oidc_redirect_uris: UriAllowlist::new(vec![
+                        "http://example.com/auth/logoutcallback".to_string(),
+                    ]),
                 },
             };
             Router::new().nest(
@@ -543,7 +557,7 @@ mod tests {
         pub async fn setup_authenticated_state(&self, app: &mut Router) -> String {
             // Call login to create a session
             let login_request = Request::builder()
-                .uri("/auth/login?app_uri=http%3A%2F%2Fexample.com&redirect_uri=http%3A%2F%2Fexample.org%2F&scope=openid")
+                .uri("/auth/login?app_uri=http%3A%2F%2Fexample.com&redirect_uri=http%3A%2F%2Fexample.com%2Fauth%2Fcallback&scope=openid")
                 .body(Body::empty())
                 .unwrap();
             let login_response = ServiceExt::<Request<Body>>::ready(app)
@@ -629,7 +643,7 @@ mod tests {
                 .await
                 .unwrap();
             // Extract session cookie for authenticated state
-            let authenticated_cookie = login_response
+            let authenticated_cookie = callback_response
                 .headers()
                 .get(SET_COOKIE)
                 .expect("Callback response should have a session cookie")

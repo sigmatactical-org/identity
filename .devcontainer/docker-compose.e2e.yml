@@ -6,24 +6,22 @@ services:
       - "3000:3000"
     command:
       - "--providers.file.filename=/routing.yaml"
-      # EntryPoints
       - "--entrypoints.keycloak.address=:8101"
       - "--entrypoints.keycloak.http.tls=true"
-      - "--entrypoints.ridser.address=:3000"
-      - "--entrypoints.ridser.http.tls=true"
-      # Observability
+      - "--entrypoints.identity.address=:3000"
+      - "--entrypoints.identity.http.tls=true"
       - "--log.level=DEBUG"
       - "--accesslog=true"
     volumes:
       - ./traefik.yaml:/routing.yaml:ro
     depends_on:
-      - ridser
+      - identity
       - keycloak
     networks:
       default:
         aliases:
           - keycloak.localhost
-  ridser:
+  identity:
     ports: !reset []
   keycloak:
     environment:

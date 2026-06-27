@@ -1,5 +1,5 @@
 [package]
-name = "ridser"
+name = "identity"
 version = "2.6.0"
 edition = "2024"
 
@@ -30,7 +30,8 @@ tokio = { version = "1.27.0", features = [
     "rt-multi-thread",
     "signal",
 ] }
-tower-http = { version = "0.6.2", features = ["fs", "trace"] }
+url = "2.5"
+tower-http = { version = "0.6.2", features = ["fs", "trace", "set-header"] }
 tower-sessions = { version = "0.14.0", features = ["private"] }
 tower-sessions-redis-store = "0.16.0"
 tracing = "0.1"
@@ -38,6 +39,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tower = { version = "0.5.2", features = ["util"] }
 mimalloc = "0.1.43"
 rustls = { version = "0.23.15", features = ["ring"] }
+sigma-theme = { git = "https://github.com/sigmatactical-org/sigma-theme.git", default-features = false, features = ["askama", "axum"] }
 
 [dev-dependencies]
 hyper = "1.5.0"

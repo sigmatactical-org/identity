@@ -25,7 +25,7 @@ test('test', async ({ page }) => {
   await expect(page.locator('#echoresponse')).toContainText('Missing or invalid CSRF token');
 
   // Obtain CSRF token
-  await page.getByRole('button', { name: 'CSRF-Token' }).click();
+  await page.getByRole('button', { name: 'CSRF token' }).click();
   await expect(page.locator('#csrftoken')).not.toBeEmpty();
 
   // Make authenticated request to echo endpoint with CSRF token

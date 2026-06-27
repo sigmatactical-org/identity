@@ -1,6 +1,6 @@
 use std::env;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use session::{SameSiteSetting, SessionSetup};
 use tokio::signal;
 use tracing::{debug, warn};
@@ -8,12 +8,15 @@ use tracing::{debug, warn};
 use crate::{
     auth::{
         AppConfigurationState, LoginAppSettings, LogoutAppSettings, LogoutBehavior, OIDCClient,
+        allowlist::UriAllowlist,
     },
+    config::validate_session_secret,
     http::{ProxyConfig, app},
     session::redis_cons,
 };
 
 mod auth;
+mod config;
 mod http;
 mod monitoring;
 mod session;
@@ -41,55 +44,58 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 
-    debug!("⏹️ signal received, starting graceful shutdown");
+    debug!("signal received, starting graceful shutdown");
 }
 
-fn oidc_client_from_env() -> Result<String> {
-    env::var("RIDSER_OIDC_CLIENT_ID").context("missing RIDSER_OIDC_CLIENT_ID")
+fn oidc_client_from_env() -> anyhow::Result<String> {
+    crate::config::var("OIDC_CLIENT_ID")
 }
 
-async fn init_oidc_client(client_id: &str) -> Result<OIDCClient> {
-    let issuer_url =
-        env::var("RIDSER_OIDC_ISSUER_URL").context("missing RIDSER_OIDC_ISSUER_URL")?;
-    let client_secret =
-        env::var("RIDSER_OIDC_CLIENT_SECRET").context("missing RIDSER_OIDC_CLIENT_SECRET")?;
-    let auth_url = env::var("RIDSER_OIDC_AUTH_URL").ok();
+async fn init_oidc_client(client_id: &str) -> anyhow::Result<OIDCClient> {
+    let issuer_url = crate::config::var("OIDC_ISSUER_URL")?;
+    let client_secret = crate::config::var("OIDC_CLIENT_SECRET")?;
+    let auth_url = crate::config::var_optional("OIDC_AUTH_URL");
     OIDCClient::build(&issuer_url, client_id, &client_secret, auth_url).await
 }
 
-fn init_session_vars() -> Result<SessionSetup> {
-    let secure_cookie = env::var("RIDSER_SESSION_SECURE_COOKIE_DISABLED")
-        .unwrap_or_else(|_| String::new())
-        .to_lowercase()
-        != "true";
-    if !secure_cookie {
+fn init_session_vars() -> anyhow::Result<SessionSetup> {
+    let secure_disabled = crate::config::var_optional("SESSION_SECURE_COOKIE_DISABLED")
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    if secure_disabled {
         warn!("Disabling secure cookies is not recommended in production.");
     }
 
     let same_site =
-        SameSiteSetting::from_env_string(env::var("RIDSER_SESSION_COOKIE_SAMESITE").ok());
+        SameSiteSetting::from_env_string(crate::config::var_optional("SESSION_COOKIE_SAMESITE"));
+
+    let secret = crate::config::var("SESSION_SECRET")?;
+    validate_session_secret(&secret)?;
 
     Ok(SessionSetup {
-        cookie_name: env::var("RIDSER_SESSION_COOKIE_NAME")
-            .unwrap_or_else(|_| "ridser.sid".to_string()),
-        cookie_path: env::var("RIDSER_SESSION_COOKIE_PATH").unwrap_or_else(|_| "/".to_string()),
-        secret: env::var("RIDSER_SESSION_SECRET").context("missing RIDSER_SESSION_SECRET")?,
+        cookie_name: crate::config::var_optional("SESSION_COOKIE_NAME")
+            .unwrap_or_else(|| "identity.sid".to_string()),
+        cookie_path: crate::config::var_optional("SESSION_COOKIE_PATH")
+            .unwrap_or_else(|| "/".to_string()),
+        secret,
         ttl: None,
-        secure_cookie,
+        secure_cookie: !secure_disabled,
         same_site,
     })
 }
 
-pub async fn run_ridser() -> Result<(), Box<dyn std::error::Error>> {
-    let connection_url = env::var("RIDSER_REDIS_URL").context("missing RIDSER_REDIS_URL")?;
+pub async fn run() -> anyhow::Result<()> {
+    let connection_url = crate::config::var("REDIS_URL")?;
     let (store, client) = redis_cons(&connection_url).await?;
     let session_setup = init_session_vars()?;
     let session_layer = session_setup.get_session_layer(store)?;
     let client_id = oidc_client_from_env()?;
     let oidc_client = init_oidc_client(&client_id).await?;
-    let proxy_rules: Vec<_> = dotenvy::vars()
+    let proxy_rules: Vec<_> = env::vars()
         .filter_map(|(key, value)| {
-            if key.starts_with("RIDSER_PROXY_TARGET_RULE_") && value.contains("=>") {
+            if (key.starts_with("IDENTITY_PROXY_TARGET_RULE_")
+                || key.starts_with("RIDSER_PROXY_TARGET_RULE_"))
+                && value.contains("=>")
+            {
                 Some(value)
             } else {
                 None
@@ -97,32 +103,37 @@ pub async fn run_ridser() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
     let proxy_config: ProxyConfig = ProxyConfig::try_init(
-        env::var("RIDSER_PROXY_TARGET").context("missing RIDSER_PROXY_TARGET")?,
+        crate::config::var("PROXY_TARGET")?,
         &session_setup.cookie_name,
         proxy_rules,
     )?;
-    let remaining_secs_threshold = env::var("RIDSER_SESSION_REFRESH_THRESHOLD")
-        .context("Missing RIDSER_SESSION_REFRESH_THRESHOLD")?
+    let remaining_secs_threshold = crate::config::var("SESSION_REFRESH_THRESHOLD")?
         .parse::<_>()
-        .context("Cannot parse RIDSER_SESSION_REFRESH_THRESHOLD")?;
+        .context("Cannot parse SESSION_REFRESH_THRESHOLD")?;
+    let login_redirects = crate::config::var("LOGIN_REDIRECT_APP_URIS")?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+    let oidc_redirects = crate::config::var("OIDC_REDIRECT_URIS")?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+    let logout_oidc_redirects = crate::config::var("LOGOUT_OIDC_REDIRECT_URIS")?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+    let logout_app_uris = crate::config::var("LOGOUT_REDIRECT_APP_URIS")?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
     let app_config = AppConfigurationState {
-        login_app_settings: LoginAppSettings::new(
-            env::var("RIDSER_LOGIN_REDIRECT_APP_URIS")
-                .context("missing RIDSER_LOGIN_REDIRECT_APP_URIS")?
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect(),
-        ),
+        login_app_settings: LoginAppSettings::new(login_redirects, oidc_redirects),
         logout_app_settings: LogoutAppSettings {
             client_id,
-            logout_uri: env::var("RIDSER_LOGOUT_SSO_URI")
-                .context("Missing RIDSER_LOGOUT_SSO_URI")?,
+            logout_uri: crate::config::var("LOGOUT_SSO_URI")?,
             _behavior: LogoutBehavior::FrontChannelLogoutWithIdToken,
-            allowed_app_uris_match: env::var("RIDSER_LOGOUT_REDIRECT_APP_URIS")
-                .context("Missing RIDSER_LOGOUT_REDIRECT_APP_URIS")?
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect(),
+            allowed_app_uris: UriAllowlist::new(logout_app_uris),
+            allowed_oidc_redirect_uris: UriAllowlist::new(logout_oidc_redirects),
         },
     };
 
@@ -139,7 +150,7 @@ pub async fn run_ridser() -> Result<(), Box<dyn std::error::Error>> {
     let bind_addr = listener
         .local_addr()
         .context("Retrieve listening address")?;
-    tracing::info!("💈 Listening on http://{}", &bind_addr);
+    tracing::info!("Listening on http://{bind_addr}");
 
     axum::serve(listener, app?.into_make_service())
         .with_graceful_shutdown(shutdown_signal())

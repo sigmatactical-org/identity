@@ -333,3 +333,8 @@ ASALocalRun/
 
 /.env
 /local.pem
+*.pem
+!test-fixtures/rsa-private.pem
+files/exampleapp/sample.js
+.cargo/
+sigma-theme

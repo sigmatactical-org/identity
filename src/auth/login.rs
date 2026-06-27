@@ -13,10 +13,10 @@ use tracing::{debug, error, trace};
 
 use crate::{
     auth::{
-        LoginCallbackSessionParameters, oidcclient::AuthorizeRequestData,
+        LoginCallbackSessionParameters, allowlist::UriAllowlist, oidcclient::AuthorizeRequestData,
         random_alphanumeric_string,
     },
-    session::purge_store_and_regenerate_session,
+    session::{SESSION_KEY_LOGIN_CALLBACK, purge_store_and_regenerate_session},
 };
 
 use super::OIDCClient;
@@ -39,39 +39,26 @@ pub(crate) struct LoginQueryParams {
 
 #[derive(Clone, Debug)]
 pub struct LoginAppSettings {
-    allowed_app_uris_match: Vec<String>,
-    allowed_app_uris_startswith: Vec<String>,
+    app_uris: UriAllowlist,
+    redirect_uris: UriAllowlist,
 }
 
 impl LoginAppSettings {
-    pub fn new(allowed_app_uris: Vec<String>) -> Self {
-        let mut allowed_app_uris_match: Vec<String> = Vec::new();
-        let mut allowed_app_uris_startswith: Vec<String> = Vec::new();
-        for allowed_app_uri in allowed_app_uris {
-            if allowed_app_uri.ends_with('*') {
-                let allowed_app_uri = allowed_app_uri[0..(allowed_app_uri.len() - 1)].to_string();
-                debug!("Allowed prefix for app_uri: {}", allowed_app_uri);
-                allowed_app_uris_startswith.push(allowed_app_uri);
-            } else {
-                debug!("Allowed app uri: {}", allowed_app_uri);
-                allowed_app_uris_match.push(allowed_app_uri.clone())
-            }
-        }
+    pub fn new(app_uri_entries: Vec<String>, redirect_uri_entries: Vec<String>) -> Self {
         Self {
-            allowed_app_uris_match,
-            allowed_app_uris_startswith,
+            app_uris: UriAllowlist::new(app_uri_entries),
+            redirect_uris: UriAllowlist::new(redirect_uri_entries),
         }
     }
 
     pub(crate) fn is_app_uri_allowed(&self, app_uri: &str) -> bool {
-        trace!("is_app_uri_allowed: app_uri: {}", app_uri);
-        let t = app_uri.to_string();
-        if self.allowed_app_uris_match.contains(&t) {
-            return true;
-        }
-        self.allowed_app_uris_startswith
-            .iter()
-            .any(|allowed_app_uri| t.starts_with(allowed_app_uri))
+        trace!("login app_uri check: {app_uri}");
+        self.app_uris.is_allowed(app_uri)
+    }
+
+    pub(crate) fn is_redirect_uri_allowed(&self, redirect_uri: &str) -> bool {
+        trace!("login redirect_uri check: {redirect_uri}");
+        self.redirect_uris.is_allowed(redirect_uri)
     }
 }
 
@@ -86,6 +73,13 @@ pub(crate) async fn login(
     if !login_app_settings.is_app_uri_allowed(login_query_params.app_uri.as_str()) {
         debug!("app_uri {} is not allowed", login_query_params.app_uri);
         return Err((StatusCode::BAD_REQUEST, "Invalid app_uri").into_response());
+    }
+    if !login_app_settings.is_redirect_uri_allowed(login_query_params.redirect_uri.as_str()) {
+        debug!(
+            "redirect_uri {} is not allowed",
+            login_query_params.redirect_uri
+        );
+        return Err((StatusCode::BAD_REQUEST, "Invalid redirect_uri").into_response());
     }
     purge_store_and_regenerate_session(&session, client.next()).await;
     let state: String = random_alphanumeric_string(20);
@@ -107,7 +101,7 @@ pub(crate) async fn login(
 
     let _ = session
         .insert(
-            "ridser_logincallback_parameters",
+            SESSION_KEY_LOGIN_CALLBACK,
             LoginCallbackSessionParameters {
                 app_uri: login_query_params.app_uri.clone(),
                 nonce: d.nonce,
@@ -119,7 +113,7 @@ pub(crate) async fn login(
         )
         .await;
 
-    debug!("login redirecting to {}", auth_url);
+    debug!("login redirecting to {auth_url}");
     Ok(Redirect::to(auth_url).into_response())
 }
 
@@ -132,69 +126,52 @@ mod tests {
             header::{COOKIE, LOCATION, SET_COOKIE},
         },
     };
-    use http_body_util::BodyExt;
     use tower::{Service, ServiceExt};
 
     use crate::auth::tests::MockSetup;
 
     use super::*;
 
+    const REDIRECT_URI: &str = "http://example.com/auth/callback";
+
     #[tokio::test]
     async fn test_login_sends_redirect() {
-        // Arrange
         let m = MockSetup::new().await;
         let app = m.router();
 
-        // Act
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/auth/login?app_uri=http://example.com&redirect_uri=http://example.com&scope=openid&state=xyz")
+                    .uri(format!(
+                        "/auth/login?app_uri=http://example.com&redirect_uri={REDIRECT_URI}&scope=openid&state=xyz"
+                    ))
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-        let status = response.status();
-        let body = String::from_utf8(
-            response
-                .into_body()
-                .collect()
-                .await
-                .expect("collect")
-                .to_bytes()
-                .to_vec(),
-        )
-        .unwrap();
-
-        // Assert
-        assert_eq!(
-            status,
-            StatusCode::SEE_OTHER,
-            "response should be redirect, but {body}"
-        );
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
     }
 
     #[tokio::test]
     async fn test_login_sends_new_session_cookie() {
-        // Arrange
         let m = MockSetup::new().await;
         let mut app = m.router();
-        let uri = "/auth/login?app_uri=http://example.com&redirect_uri=http://example.com&scope=openid&state=xyz";
+        let uri = format!(
+            "/auth/login?app_uri=http://example.com&redirect_uri={REDIRECT_URI}&scope=openid&state=xyz"
+        );
 
-        // Act
-        let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let request = Request::builder().uri(&uri).body(Body::empty()).unwrap();
         let response1 = ServiceExt::<Request<Body>>::ready(&mut app)
             .await
             .unwrap()
             .call(request)
             .await
             .unwrap();
-        let status1 = response1.status();
         let cookie1 = response1.headers().get(SET_COOKIE).unwrap();
 
         let request = Request::builder()
-            .uri(uri)
+            .uri(&uri)
             .header(COOKIE, cookie1.clone())
             .body(Body::empty())
             .unwrap();
@@ -204,219 +181,151 @@ mod tests {
             .call(request)
             .await
             .unwrap();
-        let status2 = response2.status();
         let cookie2 = response2.headers().get(SET_COOKIE).unwrap();
 
-        // Assert
-        assert_eq!(
-            status1,
-            StatusCode::SEE_OTHER,
-            "response1 should be redirect"
-        );
-        assert_eq!(
-            status2,
-            StatusCode::SEE_OTHER,
-            "response2 should be redirect"
-        );
-        assert_ne!(
-            cookie1.to_str().unwrap(),
-            cookie2.to_str().unwrap(),
-            "Second cookie should be different"
-        );
+        assert_eq!(response1.status(), StatusCode::SEE_OTHER);
+        assert_eq!(response2.status(), StatusCode::SEE_OTHER);
+        assert_ne!(cookie1.to_str().unwrap(), cookie2.to_str().unwrap());
     }
 
     #[tokio::test]
     async fn test_app_uri_invalid() {
-        // Arrange
         let m = MockSetup::new().await;
         let mut app = m.router();
 
-        let urilist = vec![
-            /* Different protocol */
+        for app_uri in [
             "https://example.com",
-            /* Path appended without wildcard */
             "http://example.com/",
             "http://example.org/my/app",
-            /* Different domain */
             "http://example.fr",
-            /* Different port */
             "http://example.com:8080",
-        ];
+        ] {
+            let response = ServiceExt::<Request<Body>>::ready(&mut app)
+                .await
+                .unwrap()
+                .call(
+                    Request::builder()
+                        .uri(format!(
+                            "/auth/login?app_uri={app_uri}&redirect_uri={REDIRECT_URI}&scope=openid&state=xyz"
+                        ))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
+    }
 
-        for app_uri in urilist {
-            // Act
-            let response = ServiceExt::<Request<Body>>::ready(&mut app).await.unwrap().call(
-                Request::builder()
-                    .uri(format!("/auth/login?app_uri={app_uri}&redirect_uri=http://example.com&scope=openid&state=xyz"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-            let status = response.status();
-            let body = String::from_utf8(
-                response
-                    .into_body()
-                    .collect()
-                    .await
-                    .expect("collect")
-                    .to_bytes()
-                    .to_vec(),
-            )
-            .unwrap();
+    #[tokio::test]
+    async fn test_redirect_uri_invalid() {
+        let m = MockSetup::new().await;
+        let mut app = m.router();
 
-            // Assert
-            assert_eq!(
-                status,
-                StatusCode::BAD_REQUEST,
-                "Request should be denied, body was: {body}"
-            );
+        for redirect_uri in [
+            "http://evil.com/auth/callback",
+            "http://example.com/callback",
+        ] {
+            let response = ServiceExt::<Request<Body>>::ready(&mut app)
+                .await
+                .unwrap()
+                .call(
+                    Request::builder()
+                        .uri(format!(
+                            "/auth/login?app_uri=http://example.com&redirect_uri={redirect_uri}&scope=openid"
+                        ))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         }
     }
 
     #[tokio::test]
     async fn test_app_uri_valid() {
-        // Arrange
         let m = MockSetup::new().await;
         let mut app = m.router();
 
-        let urilist = vec![
-            /* Exact match */
+        for app_uri in [
             "http://example.com",
-            /* Paths matching the wildcard */
             "http://example.org/my/app/*",
             "http://example.org/my/app/",
             "http://example.org/my/app/abc/",
             "http://example.org/my/app/kp/h?id=34",
-        ];
-
-        for app_uri in urilist {
-            // Act
-            let response = ServiceExt::<Request<Body>>::ready(&mut app).await.unwrap().call(
-                Request::builder()
-                    .uri(format!("/auth/login?app_uri={app_uri}&redirect_uri=http://example.com&scope=openid&state=xyz"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-            let status = response.status();
-            let body = String::from_utf8(
-                response
-                    .into_body()
-                    .collect()
-                    .await
-                    .expect("collect")
-                    .to_bytes()
-                    .to_vec(),
-            )
-            .unwrap();
-
-            // Assert
-            assert_eq!(
-                status,
-                StatusCode::SEE_OTHER,
-                "response should be redirect, but {body}"
-            );
+        ] {
+            let response = ServiceExt::<Request<Body>>::ready(&mut app)
+                .await
+                .unwrap()
+                .call(
+                    Request::builder()
+                        .uri(format!(
+                            "/auth/login?app_uri={app_uri}&redirect_uri={REDIRECT_URI}&scope=openid&state=xyz"
+                        ))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::SEE_OTHER);
         }
     }
 
     #[tokio::test]
     async fn test_login_sends_redirect_with_ui_locales() {
-        // Arrange
         let m = MockSetup::new().await;
         let app = m.router();
-
-        // Act
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/auth/login?app_uri=http://example.com&redirect_uri=http://example.com&scope=openid&state=xyz&ui_locales=de")
+                    .uri(format!(
+                        "/auth/login?app_uri=http://example.com&redirect_uri={REDIRECT_URI}&scope=openid&state=xyz&ui_locales=de"
+                    ))
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-        let url = response
-            .headers()
-            .get(LOCATION)
-            .expect("header value")
-            .to_str()
-            .expect("to str")
-            .split('?')
-            .next_back()
-            .expect("last");
-
-        // Assert
-        assert!(
-            url.contains("ui_locales=de"),
-            "url should contain ui_locales: {url}"
-        );
+        let url = response.headers().get(LOCATION).unwrap().to_str().unwrap();
+        assert!(url.contains("ui_locales=de"));
     }
 
     #[tokio::test]
     async fn test_login_sends_redirect_with_prompt_none() {
-        // Arrange
         let m = MockSetup::new().await;
         let app = m.router();
-
-        // Act
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/auth/login?app_uri=http://example.com&redirect_uri=http://example.com&scope=openid&state=xyz&prompt=none")
+                    .uri(format!(
+                        "/auth/login?app_uri=http://example.com&redirect_uri={REDIRECT_URI}&scope=openid&state=xyz&prompt=none"
+                    ))
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-        let url = response
-            .headers()
-            .get(LOCATION)
-            .expect("header value")
-            .to_str()
-            .expect("to str")
-            .split('?')
-            .next_back()
-            .expect("last");
-
-        // Assert
-        assert!(
-            url.contains("prompt=none"),
-            "url should contain prompt: {url}"
-        );
+        let url = response.headers().get(LOCATION).unwrap().to_str().unwrap();
+        assert!(url.contains("prompt=none"));
     }
 
     #[tokio::test]
     async fn test_login_sends_redirect_with_kc_idp_hint() {
-        // Arrange
         let m = MockSetup::new().await;
         let app = m.router();
-
-        // Act
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/auth/login?app_uri=http://example.com&redirect_uri=http://example.com&scope=openid&state=xyz&kc_idp_hint=some-idp")
+                    .uri(format!(
+                        "/auth/login?app_uri=http://example.com&redirect_uri={REDIRECT_URI}&scope=openid&state=xyz&kc_idp_hint=some-idp"
+                    ))
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-        let url = response
-            .headers()
-            .get(LOCATION)
-            .expect("header value")
-            .to_str()
-            .expect("to str")
-            .split('?')
-            .next_back()
-            .expect("last");
-
-        // Assert
-        assert!(
-            url.contains("kc_idp_hint=some-idp"),
-            "url should contain kc_idp_hint: {url}"
-        );
+        let url = response.headers().get(LOCATION).unwrap().to_str().unwrap();
+        assert!(url.contains("kc_idp_hint=some-idp"));
     }
 }

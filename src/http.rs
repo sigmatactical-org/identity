@@ -1,6 +1,6 @@
 use std::{
     net::{IpAddr, SocketAddr},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -9,7 +9,7 @@ use axum::{
     Extension, Router,
     body::Body,
     http::{
-        HeaderValue, Method, StatusCode, Uri,
+        HeaderValue, StatusCode, Uri,
         header::{AUTHORIZATION, COOKIE, HOST},
     },
     response::{IntoResponse, Response},
@@ -19,15 +19,19 @@ use axum_extra::extract::CookieJar;
 use axum_macros::debug_handler;
 use hyper_rustls::HttpsConnector;
 use tower::ServiceBuilder;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::{
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
+};
 use tower_sessions::Session;
 use tower_sessions_redis_store::fred::clients::Pool;
 use tracing::{debug, error, warn};
 
 use crate::{
     auth::{AppConfigurationState, OIDCClient, SessionTokens, auth_routes},
+    config,
     monitoring::health_routes,
-    session::{RidserSessionLayer, SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT},
+    session::{IdentitySessionLayer, SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT},
 };
 
 pub(crate) static HEADER_KEY_CSRF_TOKEN: &str = "x-csrf-token";
@@ -56,8 +60,7 @@ impl ProxyConfig {
             .iter()
             .find_map(|x| {
                 if uri.starts_with(x.path.as_str()) {
-                    let striplen = x.path.len();
-                    let path = &uri.to_string()[striplen..];
+                    let path = &uri[x.path.len()..];
                     Some(format!("{}{}", x.target.as_str(), path))
                 } else {
                     None
@@ -72,11 +75,10 @@ impl ProxyConfig {
         extra_routes: Vec<String>,
     ) -> Result<Self> {
         let uri = Uri::from_str(base_url.as_str())?;
-        let host = uri.host();
-        if host.is_none() {
+        if uri.host().is_none() {
             return Err(anyhow!("Missing host"));
         }
-        let extra_routes = extra_routes
+        let mut extra_routes: Vec<ExtraProxyRoute> = extra_routes
             .into_iter()
             .filter_map(|s| {
                 s.split_once("=>").map(|(path, target)| ExtraProxyRoute {
@@ -85,6 +87,7 @@ impl ProxyConfig {
                 })
             })
             .collect();
+        extra_routes.sort_by_key(|b| std::cmp::Reverse(b.path.len()));
         Ok(Self {
             base_url,
             cookie_name: cookie_name.to_string(),
@@ -94,65 +97,68 @@ impl ProxyConfig {
 }
 
 pub(crate) async fn port_listener() -> Result<tokio::net::TcpListener> {
-    let port_str = dotenvy::var("RIDSER_BIND_PORT").unwrap_or_else(|_| String::from("3000"));
+    let port_str = config::var_optional("BIND_PORT").unwrap_or_else(|| String::from("3000"));
     let port_parsed = port_str
         .parse::<u16>()
-        .context("RIDSER_BIND_PORT must be a number between 1 and 65535")?;
+        .context("BIND_PORT must be a number between 1 and 65535")?;
 
-    // Try to bind to a IPv6 address if available, falling back to IPv4
+    let bind_addr = config::var_optional("BIND_ADDRESS").unwrap_or_else(|| "::".to_string());
+    let addr: SocketAddr = if bind_addr.contains(':') {
+        format!("[{bind_addr}]:{port_parsed}")
+            .parse()
+            .context("Invalid IPv6 BIND_ADDRESS")?
+    } else {
+        SocketAddr::new(
+            bind_addr
+                .parse::<IpAddr>()
+                .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)),
+            port_parsed,
+        )
+    };
 
-    let listener = tokio::net::TcpListener::bind(SocketAddr::new(
-        IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED),
-        port_parsed,
-    ))
-    .await;
-
-    if let Ok(listener) = listener {
-        return Ok(listener);
+    match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => Ok(listener),
+        Err(_) => tokio::net::TcpListener::bind(SocketAddr::new(
+            IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+            port_parsed,
+        ))
+        .await
+        .context("Failed to bind to the specified address and port"),
     }
-
-    tokio::net::TcpListener::bind(SocketAddr::new(
-        IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
-        port_parsed,
-    ))
-    .await
-    .context("Failed to bind to the specified address and port")
 }
 
 fn walk_dir(path: &str) -> Result<Vec<PathBuf>> {
-    let files = std::fs::read_dir(path).context("Reading `files` directory")?;
+    let root = Path::new(path);
+    if !root.is_dir() {
+        warn!("Static files directory `{path}` not found; serving API/auth only");
+        return Ok(Vec::new());
+    }
+    let files = std::fs::read_dir(root).context("Reading static files directory")?;
     let mut paths = Vec::new();
     for entry in files {
         match entry {
             Ok(entry) => {
                 if entry.file_type()?.is_dir() {
-                    let mut subresult = walk_dir(&entry.path().to_string_lossy())?;
-                    paths.append(&mut subresult);
+                    paths.append(&mut walk_dir(&entry.path().to_string_lossy())?);
                 }
-
-                if entry.file_name() == "index.html" {
-                    paths.push(
-                        entry
-                            .path()
-                            .parent()
-                            .expect("Parent path is accessible")
-                            .to_owned(),
-                    );
+                if entry.file_name() == "index.html"
+                    && let Some(parent) = entry.path().parent()
+                {
+                    paths.push(parent.to_owned());
                 }
             }
-            Err(e) => warn!("File system error: {:?}", e),
+            Err(e) => warn!("File system error: {e:?}"),
         }
     }
-
     Ok(paths)
 }
 
 fn api_proxy(
-    session_layer: &RidserSessionLayer,
+    session_layer: &IdentitySessionLayer,
     proxy_config: &ProxyConfig,
 ) -> anyhow::Result<Router> {
     proxy_config.extra_routes.iter().for_each(|er| {
-        debug!("Adding extra route: {:?}", er);
+        debug!("Adding extra route: {er:?}");
     });
     let proxy_client_https = hyper_rustls::HttpsConnectorBuilder::new()
         .with_native_roots()
@@ -168,7 +174,7 @@ fn api_proxy(
             "/{*path}",
             delete(proxy)
                 .get(proxy)
-                .options(proxy)
+                .options(proxy_options)
                 .patch(proxy)
                 .post(proxy)
                 .put(proxy),
@@ -181,6 +187,23 @@ fn api_proxy(
         ))
 }
 
+async fn verify_csrf(
+    session: &Session,
+    request_csrf_token: Option<&HeaderValue>,
+) -> Result<(), Response> {
+    let session_csrf_token: Option<String> =
+        session.get(SESSION_KEY_CSRF_TOKEN).await.unwrap_or(None);
+    match (request_csrf_token, session_csrf_token.as_deref()) {
+        (Some(header), Some(token)) if header.as_bytes() == token.as_bytes() => Ok(()),
+        _ => Err((StatusCode::FORBIDDEN, "Missing or invalid CSRF token").into_response()),
+    }
+}
+
+#[debug_handler]
+async fn proxy_options() -> Response {
+    StatusCode::NO_CONTENT.into_response()
+}
+
 #[debug_handler]
 async fn proxy(
     Extension(proxy_config): Extension<ProxyConfig>,
@@ -189,18 +212,11 @@ async fn proxy(
     jar: CookieJar,
     mut req: axum::extract::Request,
 ) -> Result<Response, Response> {
-    if req.method() != Method::GET {
-        // Check CSRF token
-        let request_csrf_token = req.headers().get(HEADER_KEY_CSRF_TOKEN);
-        let session_csrf_token: Option<String> =
-            session.get(SESSION_KEY_CSRF_TOKEN).await.unwrap_or(None);
-        if request_csrf_token.is_none()
-            || session_csrf_token.is_none()
-            || request_csrf_token.unwrap().as_bytes() != session_csrf_token.unwrap().as_bytes()
-        {
-            return Err((StatusCode::FORBIDDEN, "Missing or invalid CSRF token").into_response());
-        }
-    }
+    verify_csrf(&session, req.headers().get(HEADER_KEY_CSRF_TOKEN)).await?;
+
+    let jwt: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
+    let session_tokens =
+        jwt.ok_or_else(|| (StatusCode::UNAUTHORIZED, "Authentication required").into_response())?;
 
     let path_query = req
         .uri()
@@ -209,20 +225,24 @@ async fn proxy(
         .unwrap_or_else(|| req.uri().path());
 
     let uri = proxy_config.rewrite_uri(path_query);
-    debug!("Proxy {} request to new uri `{}`", req.method(), uri);
+    debug!("Proxy {} request to `{uri}`", req.method());
     let proxy_uri = Uri::try_from(uri.as_str()).map_err(|e| {
-        debug!("Invalid proxy uri {:?}", e);
+        debug!("Invalid proxy uri {e:?}");
         (StatusCode::BAD_REQUEST, "Invalid proxy uri").into_response()
     })?;
-    let proxy_host = proxy_uri.host().unwrap();
+    let proxy_host = proxy_uri
+        .host()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid proxy uri").into_response())?;
     *req.uri_mut() = proxy_uri.clone();
-    req.headers_mut()
-        .insert(HOST, HeaderValue::from_str(proxy_host).unwrap());
+    req.headers_mut().insert(
+        HOST,
+        HeaderValue::from_str(proxy_host)
+            .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid proxy host").into_response())?,
+    );
 
     let needle = proxy_config.cookie_name.as_str();
     let remaining_cookies = jar
         .iter()
-        // Filter out cookies that are not valid for the proxy
         .filter(|h| !h.name().starts_with(needle))
         .cloned()
         .collect::<Vec<_>>();
@@ -236,34 +256,31 @@ async fn proxy(
         req.headers_mut().insert(
             COOKIE,
             HeaderValue::from_str(new_cookie_value.as_str()).map_err(|e| {
-                debug!("Invalid cookie {:?}", e);
+                debug!("Invalid cookie {e:?}");
                 (StatusCode::BAD_REQUEST, "Invalid cookie").into_response()
             })?,
         );
     }
 
-    let jwt: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
-    if let Some(session_tokens) = jwt {
-        req.headers_mut().append(
-            AUTHORIZATION,
-            HeaderValue::from_bytes(format!("Bearer {}", session_tokens.access_token()).as_bytes())
-                .map_err(|e| {
-                    error!("Failed to set authorization header: {:?}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Cannot proxy authentication".to_string(),
-                    )
-                        .into_response()
-                })?,
-        );
-    }
+    req.headers_mut().append(
+        AUTHORIZATION,
+        HeaderValue::from_bytes(format!("Bearer {}", session_tokens.access_token()).as_bytes())
+            .map_err(|e| {
+                error!("Failed to set authorization header: {e:?}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Cannot proxy authentication",
+                )
+                    .into_response()
+            })?,
+    );
     req.headers_mut().remove(HEADER_KEY_CSRF_TOKEN);
 
     Ok(client
         .request(req)
         .await
         .map_err(|e| {
-            error!("Failed to proxy request: {:?}", e);
+            error!("Failed to proxy request: {e:?}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Cannot proxy request".to_string(),
@@ -273,15 +290,39 @@ async fn proxy(
         .into_response())
 }
 
+fn security_headers(router: Router) -> Router {
+    router
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-content-type-options"),
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("referrer-policy"),
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("content-security-policy"),
+            HeaderValue::from_static(
+                "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'",
+            ),
+        ))
+}
+
 pub(crate) fn app(
     oidc_client: OIDCClient,
-    session_layer: &RidserSessionLayer,
+    session_layer: &IdentitySessionLayer,
     proxy_config: &ProxyConfig,
     client: Pool,
     remaining_secs_threshold: u64,
     app_config: AppConfigurationState,
 ) -> Result<Router> {
-    let spa_apps = walk_dir("files")?;
+    let files_root = config::files_dir();
+    let files_root_path = Path::new(&files_root);
+    let spa_apps = walk_dir(&files_root)?;
     let mut app = Router::new()
         .nest("/api", api_proxy(session_layer, proxy_config)?)
         .nest("/app", health_routes(client.clone()))
@@ -294,21 +335,20 @@ pub(crate) fn app(
                 remaining_secs_threshold,
                 app_config,
             ),
-        );
+        )
+        .merge(sigma_theme::axum::router());
 
     for spa_app in spa_apps {
-        let components: Vec<_> = spa_app
-            .components()
-            .skip(1) // first component is `/files` folder
-            .map(|c| c.as_os_str().to_string_lossy().to_string())
-            .collect();
-        let uri_path = if components.is_empty() {
+        let route_suffix = spa_app
+            .strip_prefix(files_root_path)
+            .unwrap_or(spa_app.as_path());
+        let uri_path = if route_suffix.as_os_str().is_empty() {
             "/".to_string()
         } else {
-            format!("/{}", components.join("/"))
+            format!("/{}", route_suffix.to_string_lossy().replace('\\', "/"))
         };
         let fs_path = spa_app.as_path();
-        debug!("Serving route {uri_path} from folder {:?}", fs_path);
+        debug!("Serving route {uri_path} from folder {fs_path:?}");
         let mut fallback = spa_app.clone();
         fallback.push("index.html");
         let serve_dir = ServeDir::new(fs_path).not_found_service(ServeFile::new(fallback));
@@ -320,5 +360,5 @@ pub(crate) fn app(
         }
     }
 
-    Ok(app)
+    Ok(security_headers(app))
 }

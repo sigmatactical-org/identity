@@ -1,0 +1,13 @@
+{
+  "name": "identity-exampleapp-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/sample.ts --bundle --outfile=../files/exampleapp/sample.js --platform=browser --target=es2022 --format=esm",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3"
+  }
+}

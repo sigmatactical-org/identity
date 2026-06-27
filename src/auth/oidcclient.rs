@@ -19,6 +19,8 @@ use openidconnect::{
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
+use crate::config;
+
 use super::{AuthorizeData, SessionTokens, callback::TokenExchangeData};
 
 type KeycloakTokenResponse = StandardTokenResponse<
@@ -106,10 +108,7 @@ impl OIDCClient {
         authorization_endpoint: Option<String>,
     ) -> Result<Self> {
         let http_client = {
-            let danger_accept_invalid_certs = std::env::var("RIDSER_DANGER_ACCEPT_INVALID_CERTS")
-                .unwrap_or_default()
-                .to_lowercase()
-                == "true";
+            let danger_accept_invalid_certs = config::danger_accept_invalid_certs()?;
             oauth2::reqwest::ClientBuilder::new()
                 .danger_accept_invalid_certs(danger_accept_invalid_certs)
                 // Following redirects opens the client up to SSRF vulnerabilities.

@@ -5,17 +5,17 @@ http:
       entryPoints:
         - keycloak
       service: keycloak
-    ridser:
+    identity:
       rule: PathPrefix(`/`)
       entryPoints:
-        - ridser
-      service: ridser
+        - identity
+      service: identity
   services:
     keycloak:
       loadBalancer:
         servers:
-          - url: "http://ridser:8101"
-    ridser:
+          - url: "http://identity:8101"
+    identity:
       loadBalancer:
         servers:
-          - url: "http://ridser:3000"
+          - url: "http://identity:3000"

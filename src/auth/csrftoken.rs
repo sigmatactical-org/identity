@@ -31,11 +31,9 @@ mod tests {
 
     #[tokio::test]
     async fn it_returns_empty_value_for_anonymous_access() {
-        // Arrange
         let m = MockSetup::new().await;
         let app = m.router();
 
-        // Act
         let response = app
             .oneshot(
                 Request::builder()
@@ -46,7 +44,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let status = response.status();
+        assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(
             response
                 .into_body()
@@ -57,21 +55,16 @@ mod tests {
                 .to_vec(),
         )
         .unwrap();
-
-        // Assert
-        assert_eq!(status, StatusCode::OK, "response should be ok, but {body}");
         let c: CsrfTokenResponse = serde_json::from_str(&body).expect("Body should deserialize");
         assert!(c.token.is_empty(), "token should be empty, but {body}");
     }
 
     #[tokio::test]
     async fn it_returns_a_value_for_authenticated_requests() {
-        // Arrange
         let m = MockSetup::new().await;
         let mut app = m.router();
         let session_cookie = m.setup_authenticated_state(&mut app).await;
 
-        // Act
         let response = ServiceExt::<Request<Body>>::ready(&mut app)
             .await
             .unwrap()
@@ -85,7 +78,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let status = response.status();
+        assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(
             response
                 .into_body()
@@ -96,9 +89,6 @@ mod tests {
                 .to_vec(),
         )
         .unwrap();
-
-        // Assert
-        assert_eq!(status, StatusCode::OK, "response should be ok, but {body}");
         let c: CsrfTokenResponse = serde_json::from_str(&body).expect("Body should deserialize");
         assert!(!c.token.is_empty(), "Token should not be empty");
     }

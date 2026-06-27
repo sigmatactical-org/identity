@@ -65,8 +65,8 @@ mod tests {
     #[tokio::test]
     async fn test_up() {
         let client = redis_client(
-            std::env::var("RIDSER_TEST_REDIS_URL")
-                .unwrap_or_else(|_| "redis://redis:6379".to_string())
+            crate::config::var_optional("TEST_REDIS_URL")
+                .unwrap_or_else(|| "redis://127.0.0.1:6379/".to_string())
                 .as_ref(),
         )
         .await;
@@ -91,14 +91,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_health() {
-        let pool = redis_client(
-            std::env::var("RIDSER_TEST_REDIS_URL")
-                .unwrap_or_else(|_| "redis://redis:6379".to_string())
+        let client = redis_client(
+            crate::config::var_optional("TEST_REDIS_URL")
+                .unwrap_or_else(|| "redis://127.0.0.1:6379/".to_string())
                 .as_ref(),
         )
         .await;
         // let _ = pool.connect();
-        let app = health_routes(pool);
+        let app = health_routes(client);
 
         let response = app
             .oneshot(

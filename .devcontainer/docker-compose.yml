@@ -1,13 +1,10 @@
 services:
-  ridser:
-    # https://mcr.microsoft.com/v2/vscode/devcontainers/rust/tags/list
+  identity:
     image: mcr.microsoft.com/devcontainers/rust:1-1-bullseye
     ports:
-      # Publish keycloak here, because network stack is shared
       - "8101:8101"
       - "3000:3000"
     volumes:
-      # Mount the root folder that contains .git
       - ..:/workspace:cached
     command: /bin/sh -c "while sleep 1000; do :; done"
 
@@ -22,9 +19,7 @@ services:
     command:
       - start-dev
       - --import-realm
-    # Use the network stack of another container, specified via its name
-    # https://docs.docker.com/engine/reference/run/#network-settings
-    network_mode: "service:ridser"
+    network_mode: "service:identity"
     environment:
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin

@@ -6,11 +6,13 @@ use tower_sessions::{Expiry, Session, SessionManagerLayer, service::PrivateCooki
 use tower_sessions_redis_store::{RedisStore, fred::prelude::*};
 use tracing::debug;
 
-pub(crate) type RidserSessionLayer = SessionManagerLayer<RedisStore<Pool>, PrivateCookie>;
+pub(crate) type IdentitySessionLayer = SessionManagerLayer<RedisStore<Pool>, PrivateCookie>;
 
-pub(crate) static SESSION_KEY_CSRF_TOKEN: &str = "ridser_csrf_token";
-pub(crate) static SESSION_KEY_JWT: &str = "ridser_jwt";
-pub(crate) static SESSION_KEY_USERID: &str = "ridser_userid";
+pub(crate) static SESSION_KEY_CSRF_TOKEN: &str = "identity_csrf_token";
+pub(crate) static SESSION_KEY_JWT: &str = "identity_jwt";
+pub(crate) static SESSION_KEY_USERID: &str = "identity_userid";
+pub(crate) static SESSION_KEY_LOGIN_CALLBACK: &str = "identity_logincallback_parameters";
+pub(crate) static SESSION_KEY_LOGOUT_APP_URI: &str = "identity_logout_app_uri";
 
 #[derive(Debug, Clone)]
 pub(crate) enum SameSiteSetting {
@@ -25,7 +27,7 @@ impl SameSiteSetting {
             Some("none") => SameSiteSetting::None,
             Some("lax") => SameSiteSetting::Lax,
             Some("strict") => SameSiteSetting::Strict,
-            _ => SameSiteSetting::None, // Default to None if not set or invalid
+            _ => SameSiteSetting::Lax,
         }
     }
 
@@ -49,8 +51,11 @@ pub(crate) struct SessionSetup {
 }
 
 impl SessionSetup {
-    pub(crate) fn get_session_layer(&self, store: RedisStore<Pool>) -> Result<RidserSessionLayer> {
-        debug!("📦 Preparing session");
+    pub(crate) fn get_session_layer(
+        &self,
+        store: RedisStore<Pool>,
+    ) -> Result<IdentitySessionLayer> {
+        debug!("Preparing session");
         let session_layer = SessionManagerLayer::new(store)
             .with_private(Key::from(self.secret.as_bytes()))
             .with_name(self.cookie_name.clone())
@@ -66,10 +71,7 @@ impl SessionSetup {
 }
 
 pub(crate) async fn redis_cons(connection_url: &str) -> Result<(RedisStore<Pool>, Pool)> {
-    debug!(
-        "📦 Establishing redis session connection to {}",
-        connection_url
-    );
+    debug!("Establishing redis session connection to {connection_url}");
 
     let pool = Pool::new(
         Config::from_url(connection_url).context("Invalid redis connection url")?,
@@ -91,8 +93,7 @@ pub(crate) async fn redis_cons(connection_url: &str) -> Result<(RedisStore<Pool>
     Ok((session_store, pool))
 }
 
-/// Remove the data associated with the session identifier from the store.
-/// Create a new session
+/// Remove the data associated with the session identifier from the store and create a new session.
 pub(crate) async fn purge_store_and_regenerate_session(session: &Session, client: &Client) {
     if let Some(key) = session.id() {
         let key = key.to_string();

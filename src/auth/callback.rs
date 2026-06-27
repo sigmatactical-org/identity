@@ -14,7 +14,7 @@ use tracing::{error, info};
 use crate::{
     auth::{LoginCallbackSessionParameters, OIDCClient},
     session::{
-        SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT, SESSION_KEY_USERID,
+        SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT, SESSION_KEY_LOGIN_CALLBACK, SESSION_KEY_USERID,
         purge_store_and_regenerate_session,
     },
 };
@@ -59,14 +59,14 @@ pub(crate) async fn callback(
     callback_query_params: Query<CallbackQueryParams>,
 ) -> Result<Response, Response> {
     let login_callback_session_params = session
-        .get::<LoginCallbackSessionParameters>("ridser_logincallback_parameters")
+        .get::<LoginCallbackSessionParameters>(SESSION_KEY_LOGIN_CALLBACK)
         .await
         .map_err(|redis_err| {
             error!("Reading redis error in callback: {:?}", redis_err);
             (StatusCode::INTERNAL_SERVER_ERROR, "Invalid session").into_response()
         })?
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid session").into_response())?;
-    let _: Result<Option<()>, _> = session.remove("ridser_logincallback_parameters").await;
+    let _: Result<Option<()>, _> = session.remove(SESSION_KEY_LOGIN_CALLBACK).await;
     if callback_query_params.state != login_callback_session_params.csrf_token {
         return Err((StatusCode::BAD_REQUEST, "Invalid request").into_response());
     }
@@ -136,7 +136,7 @@ mod tests {
         let code: String = random_alphanumeric_string(20);
 
         // Act
-        let request = Request::builder().uri("/auth/login?app_uri=http://example.com&redirect_uri=http://example.com&scope=openid".to_string()).body(Body::empty()).unwrap();
+        let request = Request::builder().uri("/auth/login?app_uri=http://example.com&redirect_uri=http://example.com/auth/callback&scope=openid".to_string()).body(Body::empty()).unwrap();
         let response1 = ServiceExt::<Request<Body>>::ready(&mut app)
             .await
             .unwrap()

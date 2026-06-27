@@ -1,24 +1,32 @@
+use identity::run;
 use mimalloc::MiMalloc;
-use ridser::run_ridser;
 use tracing::{error, trace};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-#[tokio::main]
-async fn main() {
-    // Initializing .env first enables setting the RUST_LOG env var.
+fn main() {
     let _ = dotenvy::dotenv();
-
-    // install global collector configured based on RUST_LOG env var.
     tracing_subscriber::fmt::init();
-    trace!("🔥 Starting initialization");
+    trace!("Starting initialization");
 
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
-    run_ridser().await.unwrap_or_else(|e| {
-        error!("💀 Failed to run: {:?}", e);
-    });
+    let code = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build tokio runtime")
+        .block_on(async {
+            match run().await {
+                Ok(()) => 0,
+                Err(e) => {
+                    error!("Failed to run: {e:?}");
+                    1
+                }
+            }
+        });
+
+    std::process::exit(code);
 }
