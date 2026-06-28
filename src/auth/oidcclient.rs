@@ -14,7 +14,7 @@ use openidconnect::{
     SignatureVerificationError, StandardTokenResponse, TokenResponse,
     core::{
         CoreAuthenticationFlow, CoreClient, CoreGenderClaim, CoreIdToken, CoreIdTokenClaims,
-        CoreIdTokenVerifier, CoreJweContentEncryptionAlgorithm, CoreJsonWebKeySet,
+        CoreIdTokenVerifier, CoreJsonWebKeySet, CoreJweContentEncryptionAlgorithm,
         CoreJwsSigningAlgorithm, CoreProviderMetadata,
     },
 };
@@ -233,13 +233,16 @@ impl OIDCClient {
             let (_, host) = Self::webfinger_host_and_scheme(resource)?;
             let scheme = issuer.scheme();
             let port = issuer.port_or_known_default().unwrap_or(443);
-            let port_suffix = if (scheme == "https" && port == 443) || (scheme == "http" && port == 80) {
-                String::new()
-            } else {
-                format!(":{port}")
-            };
-            Url::parse(&format!("{scheme}://{host}{port_suffix}/.well-known/webfinger"))
-                .context("Invalid WebFinger URL")
+            let port_suffix =
+                if (scheme == "https" && port == 443) || (scheme == "http" && port == 80) {
+                    String::new()
+                } else {
+                    format!(":{port}")
+                };
+            Url::parse(&format!(
+                "{scheme}://{host}{port_suffix}/.well-known/webfinger"
+            ))
+            .context("Invalid WebFinger URL")
         } else {
             let mut resource_url =
                 Url::parse(resource).context("Invalid WebFinger resource URL")?;
@@ -269,8 +272,8 @@ impl OIDCClient {
             .text()
             .await
             .context("WebFinger response body unreadable")?;
-        let response: Value = serde_json::from_str(&response)
-            .context("WebFinger response was not JSON")?;
+        let response: Value =
+            serde_json::from_str(&response).context("WebFinger response was not JSON")?;
 
         let links = response
             .get("links")
@@ -356,7 +359,9 @@ impl OIDCClient {
                 Err(err) => return Err(err.into()),
             }
         }
-        Err(anyhow!("ID token signature verification failed after JWKS refresh"))
+        Err(anyhow!(
+            "ID token signature verification failed after JWKS refresh"
+        ))
     }
 
     async fn resolve_distributed_claims(
@@ -381,7 +386,10 @@ impl OIDCClient {
                 .await?;
         }
 
-        debug!("Resolved distributed claims from {} source(s)", sources.len());
+        debug!(
+            "Resolved distributed claims from {} source(s)",
+            sources.len()
+        );
         Ok(())
     }
 
@@ -443,10 +451,8 @@ impl OIDCClient {
         if let Some(endpoint) = source.get("endpoint").and_then(|v| v.as_str()) {
             let mut request = self.http_client.get(endpoint);
             if let Some(token) = source.get("access_token").and_then(|v| v.as_str()) {
-                request = request.header(
-                    axum::http::header::AUTHORIZATION,
-                    format!("Bearer {token}"),
-                );
+                request =
+                    request.header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"));
             }
             let jwt_str = request
                 .send()
@@ -580,12 +586,8 @@ impl OIDCClient {
                 )
                 .await?;
             if let Some(payload) = userinfo_payload.as_ref() {
-                self.resolve_distributed_claims_from_userinfo_payload(
-                    &inner,
-                    payload,
-                    &nonce,
-                )
-                .await?;
+                self.resolve_distributed_claims_from_userinfo_payload(&inner, payload, &nonce)
+                    .await?;
             }
             if config::oidc_jwks_refresh_after_userinfo() {
                 let _ = self.fetch_jwks(&inner.metadata).await;
