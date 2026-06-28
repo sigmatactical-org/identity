@@ -13,6 +13,8 @@ pub(crate) static SESSION_KEY_JWT: &str = "identity_jwt";
 pub(crate) static SESSION_KEY_USERID: &str = "identity_userid";
 pub(crate) static SESSION_KEY_LOGIN_CALLBACK: &str = "identity_logincallback_parameters";
 pub(crate) static SESSION_KEY_LOGOUT_APP_URI: &str = "identity_logout_app_uri";
+/// Short-lived cookie carrying post-logout app redirect through the IdP round-trip.
+pub(crate) static LOGOUT_APP_URI_COOKIE: &str = "identity.logout.app_uri";
 
 #[derive(Debug, Clone)]
 pub(crate) enum SameSiteSetting {

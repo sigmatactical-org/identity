@@ -3,15 +3,22 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
 };
+use axum_extra::extract::{
+    CookieJar,
+    cookie::{Cookie, SameSite as CookieSameSite},
+};
 use axum_macros::debug_handler;
 use serde::Deserialize;
+use time::Duration;
 use tower_sessions::Session;
 use tracing::{debug, trace, warn};
 use url::Url;
 
-use crate::session::{SESSION_KEY_JWT, SESSION_KEY_LOGOUT_APP_URI};
+use crate::session::{
+    LOGOUT_APP_URI_COOKIE, SESSION_KEY_LOGOUT_APP_URI, SameSiteSetting,
+};
 
-use super::{SessionTokens, allowlist::UriAllowlist};
+use super::allowlist::UriAllowlist;
 
 #[derive(Clone, Debug)]
 pub enum LogoutBehavior {
@@ -53,23 +60,43 @@ impl LogoutAppSettings {
     }
 }
 
-/// Keycloak returns the exact `post_logout_redirect_uri`; embed `app_uri` so the
-/// callback does not depend on Redis session surviving the IdP round-trip.
-fn build_post_logout_redirect_uri(
-    redirect_uri: &str,
-    app_uri: &str,
-) -> Result<String, Box<Response>> {
-    let mut url = Url::parse(redirect_uri)
-        .map_err(|_| Box::new((StatusCode::BAD_REQUEST, "Invalid redirect_uri").into_response()))?;
-    url.query_pairs_mut().append_pair("app_uri", app_uri);
-    Ok(url.to_string())
+fn session_cookie_secure() -> bool {
+    !crate::config::var_optional("SESSION_SECURE_COOKIE_DISABLED")
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+}
+
+fn session_cookie_same_site() -> SameSiteSetting {
+    SameSiteSetting::from_env_string(crate::config::var_optional("SESSION_COOKIE_SAMESITE"))
+}
+
+fn logout_app_uri_cookie(app_uri: &str) -> Cookie<'static> {
+    let mut builder = Cookie::build((LOGOUT_APP_URI_COOKIE, app_uri.to_string()))
+        .http_only(true)
+        .path("/auth")
+        .max_age(Duration::minutes(10));
+    if session_cookie_secure() {
+        builder = builder.secure(true);
+    }
+    builder = builder.same_site(match session_cookie_same_site() {
+        SameSiteSetting::None => CookieSameSite::None,
+        SameSiteSetting::Lax => CookieSameSite::Lax,
+        SameSiteSetting::Strict => CookieSameSite::Strict,
+    });
+    builder.build()
+}
+
+fn clear_logout_app_uri_cookie() -> Cookie<'static> {
+    Cookie::build((LOGOUT_APP_URI_COOKIE, ""))
+        .http_only(true)
+        .path("/auth")
+        .max_age(Duration::seconds(0))
+        .build()
 }
 
 fn build_logout_url(
     logout_uri: &str,
     client_id: &str,
     post_logout_redirect_uri: &str,
-    id_token: &str,
 ) -> Result<String, Box<Response>> {
     let mut url = Url::parse(logout_uri).map_err(|_| {
         Box::new(
@@ -84,9 +111,6 @@ fn build_logout_url(
         let mut pairs = url.query_pairs_mut();
         pairs.append_pair("post_logout_redirect_uri", post_logout_redirect_uri);
         pairs.append_pair("client_id", client_id);
-        if !id_token.is_empty() {
-            pairs.append_pair("id_token_hint", id_token);
-        }
     }
     Ok(url.to_string())
 }
@@ -95,6 +119,7 @@ fn build_logout_url(
 pub(crate) async fn logout(
     State(logout_app_settings): State<LogoutAppSettings>,
     session: Session,
+    jar: CookieJar,
     logout_query_params: Query<LogoutQueryParams>,
 ) -> Response {
     if !logout_app_settings.is_app_uri_allowed(&logout_query_params.app_uri) {
@@ -120,24 +145,14 @@ pub(crate) async fn logout(
         .await;
     let _ = session.save().await;
 
-    let post_logout_redirect_uri = match build_post_logout_redirect_uri(
-        &logout_query_params.redirect_uri,
-        &logout_query_params.app_uri,
-    ) {
-        Ok(uri) => uri,
-        Err(resp) => return *resp,
-    };
-
-    let session_tokens: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
-    let id_token = session_tokens.map(|st| st.id_token).unwrap_or_default();
+    let jar = jar.add(logout_app_uri_cookie(&logout_query_params.app_uri));
 
     match build_logout_url(
         &logout_app_settings.logout_uri,
         &logout_app_settings.client_id,
-        &post_logout_redirect_uri,
-        &id_token,
+        &logout_query_params.redirect_uri,
     ) {
-        Ok(uri) => Redirect::to(uri.as_str()).into_response(),
+        Ok(uri) => (jar, Redirect::to(uri.as_str())).into_response(),
         Err(resp) => *resp,
     }
 }
@@ -146,17 +161,19 @@ pub(crate) async fn logout(
 pub(crate) async fn logout_callback(
     State(logout_app_settings): State<LogoutAppSettings>,
     session: Session,
+    jar: CookieJar,
     callback_query_params: Query<LogoutCallbackQueryParams>,
 ) -> Response {
-    let app_uri = callback_query_params
-        .app_uri
-        .clone()
+    let app_uri = jar
+        .get(LOGOUT_APP_URI_COOKIE)
+        .map(|cookie| cookie.value().to_string())
+        .or(callback_query_params.app_uri.clone())
         .or(session
             .get::<String>(SESSION_KEY_LOGOUT_APP_URI)
             .await
             .unwrap_or_default())
         .unwrap_or_else(|| {
-            warn!("logout app_uri not found in callback query or session");
+            warn!("logout app_uri not found in cookie, callback query, or session");
             "/".to_string()
         });
 
@@ -164,7 +181,9 @@ pub(crate) async fn logout_callback(
     if !logout_app_settings.is_app_uri_allowed(&app_uri) {
         return (StatusCode::BAD_REQUEST, "Invalid app_uri").into_response();
     }
-    Redirect::to(&app_uri).into_response()
+
+    let jar = jar.remove(clear_logout_app_uri_cookie());
+    (jar, Redirect::to(&app_uri)).into_response()
 }
 
 #[cfg(test)]
@@ -180,6 +199,9 @@ mod tests {
     use tower::{Service, ServiceExt};
 
     use crate::auth::tests::MockSetup;
+    use crate::session::LOGOUT_APP_URI_COOKIE;
+
+    use super::logout_app_uri_cookie;
 
     #[tokio::test]
     async fn test_handles_anonymous_state_with_valid_app_uris() {
@@ -282,21 +304,26 @@ mod tests {
             .get(LOCATION)
             .map(|hv| hv.to_str().unwrap().to_string())
             .unwrap_or_default();
+        let set_cookie = response
+            .headers()
+            .get(SET_COOKIE)
+            .map(|hv| hv.to_str().unwrap().to_string())
+            .unwrap_or_default();
         assert!(
             location.contains("client_id="),
             "logout URL should include client_id"
-        );
-        assert!(
-            location.contains("id_token_hint="),
-            "logout URL should include id_token_hint"
         );
         assert!(
             location.contains("post_logout_redirect_uri="),
             "logout URL should include post_logout_redirect_uri"
         );
         assert!(
-            location.contains("app_uri"),
-            "logout URL should embed app_uri in post_logout_redirect_uri"
+            !location.contains("id_token_hint="),
+            "logout URL should not include id_token_hint"
+        );
+        assert!(
+            set_cookie.contains(LOGOUT_APP_URI_COOKIE),
+            "logout should set app_uri cookie, got {set_cookie}"
         );
     }
 
@@ -312,6 +339,34 @@ mod tests {
             .call(
                 Request::builder()
                     .uri(format!("/auth/logoutcallback?app_uri={app_uri}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .map(|hv| hv.to_str().unwrap().to_string());
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(Some(app_uri), location);
+    }
+
+    #[tokio::test]
+    async fn test_logout_callback_reads_app_uri_from_cookie() {
+        let m = MockSetup::new().await;
+        let mut app = m.router();
+        let app_uri = "http://logout.example.com".to_string();
+        let logout_cookie = logout_app_uri_cookie(&app_uri);
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(
+                Request::builder()
+                    .uri("/auth/logoutcallback")
+                    .header(COOKIE, logout_cookie.to_string())
                     .body(Body::empty())
                     .unwrap(),
             )

@@ -31,21 +31,12 @@ const exampleAppUrl = /\/exampleapp\/?/;
 export const logoutViaExampleApp = async (page: Page) => {
   await page.getByRole("button", { name: "Logout" }).click();
 
-  // Keycloak may require a second confirmation when id_token_hint is missing/invalid.
   await page
     .getByRole("button", { name: "Logout" })
     .click({ timeout: 5_000 })
     .catch(() => {});
 
-  try {
-    await page.waitForURL(exampleAppUrl, { timeout: 30_000 });
-  } catch {
-    const backToApp = page.getByRole("link", { name: /back to application/i });
-    if (await backToApp.isVisible().catch(() => false)) {
-      await backToApp.click();
-    }
-    await page.waitForURL(exampleAppUrl, { timeout: 30_000 });
-  }
+  await page.waitForURL(exampleAppUrl, { timeout: 45_000, waitUntil: "commit" });
 
   await expect(page.locator("#loginStatus")).toContainText("not authenticated", {
     timeout: 15_000,
