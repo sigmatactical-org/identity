@@ -26,6 +26,12 @@ pub(crate) struct LogoutQueryParams {
     redirect_uri: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct LogoutCallbackQueryParams {
+    #[serde(rename = "app_uri")]
+    app_uri: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct LogoutAppSettings {
     pub(crate) client_id: String,
@@ -45,6 +51,18 @@ impl LogoutAppSettings {
         trace!("logout oidc redirect check: {redirect_uri}");
         self.allowed_oidc_redirect_uris.is_allowed(redirect_uri)
     }
+}
+
+/// Keycloak returns the exact `post_logout_redirect_uri`; embed `app_uri` so the
+/// callback does not depend on Redis session surviving the IdP round-trip.
+fn build_post_logout_redirect_uri(
+    redirect_uri: &str,
+    app_uri: &str,
+) -> Result<String, Box<Response>> {
+    let mut url = Url::parse(redirect_uri)
+        .map_err(|_| Box::new((StatusCode::BAD_REQUEST, "Invalid redirect_uri").into_response()))?;
+    url.query_pairs_mut().append_pair("app_uri", app_uri);
+    Ok(url.to_string())
 }
 
 fn build_logout_url(
@@ -102,13 +120,21 @@ pub(crate) async fn logout(
         .await;
     let _ = session.save().await;
 
+    let post_logout_redirect_uri = match build_post_logout_redirect_uri(
+        &logout_query_params.redirect_uri,
+        &logout_query_params.app_uri,
+    ) {
+        Ok(uri) => uri,
+        Err(resp) => return *resp,
+    };
+
     let session_tokens: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
     let id_token = session_tokens.map(|st| st.id_token).unwrap_or_default();
 
     match build_logout_url(
         &logout_app_settings.logout_uri,
         &logout_app_settings.client_id,
-        &logout_query_params.redirect_uri,
+        &post_logout_redirect_uri,
         &id_token,
     ) {
         Ok(uri) => Redirect::to(uri.as_str()).into_response(),
@@ -120,13 +146,17 @@ pub(crate) async fn logout(
 pub(crate) async fn logout_callback(
     State(logout_app_settings): State<LogoutAppSettings>,
     session: Session,
+    callback_query_params: Query<LogoutCallbackQueryParams>,
 ) -> Response {
-    let app_uri = session
-        .get::<String>(SESSION_KEY_LOGOUT_APP_URI)
-        .await
-        .unwrap_or_default()
+    let app_uri = callback_query_params
+        .app_uri
+        .clone()
+        .or(session
+            .get::<String>(SESSION_KEY_LOGOUT_APP_URI)
+            .await
+            .unwrap_or_default())
         .unwrap_or_else(|| {
-            warn!("logout app_uri not found in session");
+            warn!("logout app_uri not found in callback query or session");
             "/".to_string()
         });
 
@@ -264,6 +294,36 @@ mod tests {
             location.contains("post_logout_redirect_uri="),
             "logout URL should include post_logout_redirect_uri"
         );
+        assert!(
+            location.contains("app_uri"),
+            "logout URL should embed app_uri in post_logout_redirect_uri"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_logout_callback_reads_app_uri_from_query() {
+        let m = MockSetup::new().await;
+        let mut app = m.router();
+        let app_uri = "http://logout.example.com".to_string();
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(
+                Request::builder()
+                    .uri(format!("/auth/logoutcallback?app_uri={app_uri}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .map(|hv| hv.to_str().unwrap().to_string());
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(Some(app_uri), location);
     }
 
     #[tokio::test]
