@@ -55,11 +55,35 @@ See `.env.default` for the full list including proxy routing rules.
 - Proxy routes require an authenticated session and a valid CSRF token on every method except `OPTIONS`.
 - Response security headers are set on all routes.
 
-## Development
+## What identity needs to run
 
-### Devcontainer (recommended)
+sigma-identity is a stateless BFF except for **Redis sessions**. It does not store users or tokens in a database — the OIDC provider (Keycloak in dev) holds identity; Redis holds session cookies → tokens.
 
-VS Code with the Dev Containers extension, or manually:
+| Dependency | Dev (host) | Dev (container) | Production |
+|------------|------------|-----------------|------------|
+| **Redis** | `./scripts/dev-stack.sh up` → `127.0.0.1:6379` | compose `redis` service | Memorystore / managed Redis |
+| **OIDC IdP** | Keycloak via dev-stack → `127.0.0.1:8101` | Keycloak in devcontainer | Keycloak (or other certified OP) |
+| **Backend to proxy** | Echo via dev-stack → `127.0.0.1:8088` | compose `echo` service | Your API services |
+| **sigma-theme** | `./scripts/prepare-local.sh` | same | baked into release image |
+| **Config** | `.env.host` (see below) | `.env.default` in container | Secret Manager / K8s secrets |
+
+### Quick start (host — recommended for debugging)
+
+```bash
+./scripts/prepare-local.sh
+./scripts/dev-stack.sh up
+./scripts/dev-stack.sh wait
+./scripts/dev-stack.sh env      # writes .env from .env.host
+cargo run
+```
+
+Open http://localhost:3000/exampleapp/ — login via Keycloak (`user1` / `user1` in dev realm).
+
+Stop dependencies: `./scripts/dev-stack.sh down`
+
+### Devcontainer (all-in-container)
+
+VS Code Dev Containers, or manually:
 
 ```bash
 cd .devcontainer
@@ -73,13 +97,13 @@ cargo run
 
 Keycloak, Redis, Traefik, and an echo backend are included in the compose stack. The OIDC client id in `dev_realm.json` is `identity`.
 
-### Local (Rust only)
+### Local (Rust only, bring your own Redis + IdP)
 
 Requires Redis (`redis-server` on `127.0.0.1:6379`), an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
 
 ```bash
 ./scripts/prepare-local.sh   # clone/link sigma-theme, build TS, patch cargo
-cp .env.default .env         # IDENTITY_REDIS_URL=redis://127.0.0.1:6379/
+cp .env.host .env            # or .env.default if IdP/echo hostnames match
 cargo run
 ```
 
@@ -109,9 +133,28 @@ cd tests && npm ci && npx playwright install --with-deps && npx playwright test
 
 CI (`.github/workflows/playwright.yml`) runs **Chromium only**; locally you can add `--project=firefox` or `--project=webkit`.
 
+### OpenID Connect conformance (RP)
+
+Runs the [OpenID Foundation conformance suite](https://gitlab.com/openid/conformance-suite) locally with **sigma-identity as the relying party** and the suite’s fake OP. The test runner starts each module first, then starts identity when the suite reaches `WAITING`. See [`conformance/README.md`](conformance/README.md) for details.
+
+```bash
+# /etc/hosts: 127.0.0.1 localhost.emobix.co.uk
+./scripts/prepare-local.sh
+./scripts/conformance-stack.sh up
+./scripts/conformance-stack.sh wait-suite
+./scripts/conformance-stack.sh build
+./scripts/conformance-stack.sh test-smoke    # one dev-plan module
+./scripts/conformance-stack.sh test            # all configured RP plans
+./scripts/conformance-stack.sh down
+```
+
+Optional: `./scripts/conformance-stack.sh bootstrap` records fake-OP plan metadata only; it does not start tests.
+
+CI: `.github/workflows/conformance.yml` (weekly full run + manual dispatch). Use the hosted [certification.openid.net](https://www.certification.openid.net/) for formal certification submissions.
+
 ## File serving
 
-App-specific static pages (e.g. `files/exampleapp/`) live under `IDENTITY_FILES_DIR`. Shared chrome — CSS, JS, home page, favicon — comes from the [`sigma-theme`](../theme) crate (embedded at compile time).
+App-specific static pages (e.g. `files/exampleapp/`) live under `IDENTITY_FILES_DIR`. Shared chrome — CSS, JS, home page, favicon — comes from the [sigma-theme](https://github.com/sigmatactical-org/sigma-theme) crate (embedded at compile time via `./scripts/prepare-local.sh`).
 
 ## Docker
 

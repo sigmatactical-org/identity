@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sigma-identity OIDC conformance</title>
+    <link rel="stylesheet" href="/static/vendor/bootstrap-5.3.3/bootstrap.min.css" />
+    <link rel="stylesheet" href="/static/css/site.css" />
+  </head>
+  <body class="p-4">
+    <h1>OIDC conformance client</h1>
+    <p>
+      OpenID Foundation conformance suite exercises this BFF as the relying party. Use
+      <strong>Start login</strong> to begin the authorization code flow against the suite fake OP.
+    </p>
+    <p>Login status: <strong id="loginStatus">unknown</strong></p>
+    <button id="conformance-login" type="button" class="btn btn-primary">Start login</button>
+    <button id="conformance-logout" type="button" class="btn btn-outline-secondary ms-2">Logout</button>
+    <script type="module">
+      const status = document.getElementById("loginStatus");
+      const params = (entries) =>
+        Object.entries(entries)
+          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+          .join("&");
+
+      async function refreshStatus() {
+        try {
+          const res = await fetch("/auth/status");
+          const data = await res.json();
+          status.textContent = data.authenticated ? "authenticated" : "not authenticated";
+        } catch {
+          status.textContent = "not authenticated";
+        }
+      }
+
+      document.getElementById("conformance-login").onclick = () => {
+        const origin = window.location.origin;
+        const state = `conformance-${crypto.randomUUID()}`;
+        sessionStorage.setItem("state", state);
+        window.location.href = `/auth/login?${params({
+          scope: "openid profile email",
+          redirect_uri: `${origin}/auth/callback`,
+          app_uri: `${origin}/conformance/`,
+          state,
+        })}`;
+      };
+
+      document.getElementById("conformance-logout").onclick = () => {
+        const origin = window.location.origin;
+        window.location.href = `/auth/logout?${params({
+          redirect_uri: `${origin}/auth/logoutcallback`,
+          app_uri: `${origin}/conformance/`,
+        })}`;
+      };
+
+      refreshStatus();
+      setInterval(refreshStatus, 2000);
+    </script>
+  </body>
+</html>

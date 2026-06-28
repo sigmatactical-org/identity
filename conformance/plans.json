@@ -1,0 +1,47 @@
+{
+  "plans": [
+    {
+      "name": "oidcc-client-test-plan",
+      "config": "config/oidcc-client-test.json",
+      "variant": {
+        "client_auth_type": "client_secret_post",
+        "response_type": "code",
+        "client_registration": "static_client",
+        "request_type": "plain_http_request",
+        "response_mode": "default"
+      }
+    },
+    {
+      "name": "oidcc-client-basic-certification-test-plan",
+      "config": "config/oidcc-client-basic.json",
+      "variant": {
+        "client_auth_type": "client_secret_post",
+        "response_type": "code",
+        "client_registration": "static_client",
+        "request_type": "plain_http_request",
+        "response_mode": "default"
+      }
+    },
+    {
+      "name": "oidcc-client-refreshtoken-test-plan",
+      "config": "config/oidcc-client-refreshtoken.json",
+      "variant": {
+        "client_auth_type": "client_secret_basic",
+        "response_type": "code",
+        "client_registration": "static_client",
+        "request_type": "plain_http_request",
+        "response_mode": "form_post"
+      }
+    },
+    {
+      "name": "oidcc-rp-initiated-logout-certification-test-plan",
+      "config": "config/oidcc-rp-initiated-logout.json",
+      "variant": {
+        "client_auth_type": "client_secret_post",
+        "response_type": "code",
+        "client_registration": "static_client",
+        "response_mode": "default"
+      }
+    }
+  ]
+}

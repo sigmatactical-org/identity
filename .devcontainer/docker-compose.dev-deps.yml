@@ -1,0 +1,28 @@
+# Host-native dependencies for sigma-identity (Keycloak, Redis, echo).
+# Identity itself runs on the host via `cargo run` — not in this compose file.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.2
+    command:
+      - start-dev
+      - --import-realm
+    ports:
+      - "127.0.0.1:8101:8101"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "8101"
+    volumes:
+      - ../dev_realm.json:/opt/keycloak/data/import/dev_realm.json
+
+  redis:
+    image: redis:7-bookworm
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  echo:
+    build:
+      context: echo
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8088:3000"

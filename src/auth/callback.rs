@@ -23,9 +23,9 @@ use super::{SessionTokens, random_alphanumeric_string};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct CallbackQueryParams {
-    code: Option<String>,
-    error: Option<String>,
-    state: String,
+    pub(crate) code: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) state: String,
 }
 
 #[derive(Debug, Clone)]

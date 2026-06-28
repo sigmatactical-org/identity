@@ -71,3 +71,36 @@ pub fn files_dir() -> String {
     }
     "files".to_string()
 }
+
+/// When true, OIDC conformance testing assets and relaxed login defaults are enabled.
+pub fn conformance_mode() -> bool {
+    matches!(
+        var_optional("CONFORMANCE_MODE").as_deref(),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}
+
+/// When set: `client_secret_basic` or `client_secret_post` for token endpoint auth.
+pub fn oidc_token_endpoint_auth_method() -> Option<String> {
+    var_optional("OIDC_TOKEN_ENDPOINT_AUTH_METHOD").map(|v| v.trim().to_ascii_lowercase())
+}
+
+/// `header` (default) or `body` for UserInfo access token presentation.
+pub fn oidc_userinfo_method() -> String {
+    var_optional("OIDC_USERINFO_METHOD")
+        .map(|v| v.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| "header".to_string())
+}
+
+/// When set, discover the issuer via WebFinger for this resource (acct: or https: URL).
+pub fn oidc_webfinger_resource() -> Option<String> {
+    var_optional("OIDC_WEBFINGER_RESOURCE")
+}
+
+/// When true, refetch JWKS after UserInfo (rotation certification modules).
+pub fn oidc_jwks_refresh_after_userinfo() -> bool {
+    matches!(
+        var_optional("OIDC_JWKS_REFRESH_AFTER_USERINFO").as_deref(),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}

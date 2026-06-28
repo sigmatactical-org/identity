@@ -28,10 +28,10 @@ if [[ "${IDENTITY_IMAGE_INCLUDE_DEMO:-0}" == "1" ]]; then
   cp -a "$ROOT/files/." "$ROOT/build/image/files/"
 else
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --exclude='exampleapp' "$ROOT/files/" "$ROOT/build/image/files/"
+    rsync -a --exclude='exampleapp' --exclude='conformance' "$ROOT/files/" "$ROOT/build/image/files/"
   else
     cp -a "$ROOT/files/." "$ROOT/build/image/files/"
-    rm -rf "$ROOT/build/image/files/exampleapp"
+    rm -rf "$ROOT/build/image/files/exampleapp" "$ROOT/build/image/files/conformance"
   fi
 fi
 

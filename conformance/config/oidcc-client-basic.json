@@ -1,0 +1,26 @@
+{
+  "alias": "sigma-identity",
+  "description": "sigma-identity/{VERSION} basic RP certification",
+  "publish": "no",
+  "client": {
+    "client_id": "{CLIENT_ID}",
+    "client_secret": "{CLIENT_SECRET}",
+    "redirect_uris": ["https://localhost:3000/auth/callback"],
+    "scope": "openid profile email"
+  },
+  "browser": [
+    {
+      "match": "https://localhost.emobix.co.uk:8443/test/a/sigma-identity/authorize*",
+      "tasks": [
+        {
+          "task": "Login at conformance OP",
+          "optional": true,
+          "commands": [
+            ["click", "xpath", "//input[@type='submit']", "optional"],
+            ["click", "xpath", "//button[contains(.,'Continue') or contains(.,'continue')]", "optional"]
+          ]
+        }
+      ]
+    }
+  ]
+}

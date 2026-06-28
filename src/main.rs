@@ -6,7 +6,7 @@ use tracing::{error, trace};
 static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() {
-    let _ = dotenvy::dotenv();
+    let _ = dotenvy::dotenv_override();
     tracing_subscriber::fmt::init();
     trace!("Starting initialization");
 

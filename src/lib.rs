@@ -90,6 +90,9 @@ pub async fn run() -> anyhow::Result<()> {
     let session_layer = session_setup.get_session_layer(store)?;
     let client_id = oidc_client_from_env()?;
     let oidc_client = init_oidc_client(&client_id).await?;
+    if config::conformance_mode() {
+        debug!("OIDC conformance mode enabled (see /conformance/ harness)");
+    }
     let proxy_rules: Vec<_> = env::vars()
         .filter_map(|(key, value)| {
             if (key.starts_with("IDENTITY_PROXY_TARGET_RULE_")

@@ -1,0 +1,76 @@
+name: OpenID Conformance
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: Plan name (empty = smoke test only)
+        required: false
+        default: ""
+  schedule:
+    # Weekly Sunday 04:00 UTC — pulls large suite images; allow ~2h.
+    - cron: "0 4 * * 0"
+
+concurrency:
+  group: conformance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: "1.90.0"
+  NODE_VERSION: "22"
+  CARGO_TERM_COLOR: always
+  CONFORMANCE_SERVER: https://localhost.emobix.co.uk:8443
+  CLIENT_ID: sigma-identity-conformance
+  CLIENT_SECRET: conformance-client-secret-not-for-production
+
+jobs:
+  rp-conformance:
+    timeout-minutes: 150
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/sigma-theme
+          path: theme
+
+      - name: Hosts for conformance suite
+        run: echo "127.0.0.1 localhost.emobix.co.uk" | sudo tee -a /etc/hosts
+
+      - name: Prepare build
+        run: ./scripts/prepare-local.sh
+
+      - name: Start conformance stack
+        run: ./scripts/conformance-stack.sh up
+
+      - name: Wait for conformance suite
+        run: ./scripts/conformance-stack.sh wait-suite
+
+      - name: Build identity
+        run: ./scripts/conformance-stack.sh build
+
+      - name: Run RP conformance tests
+        run: |
+          if [[ -n "${{ github.event.inputs.plan }}" ]]; then
+            ./scripts/conformance-stack.sh test --plan "${{ github.event.inputs.plan }}"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            ./scripts/conformance-stack.sh test
+          else
+            ./scripts/conformance-stack.sh test-smoke
+          fi
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: conformance-results
+          path: |
+            conformance/.last-run.json
+            conformance/.bootstrap-plan.json
+          retention-days: 30
+
+      - name: Stop stack
+        if: always()
+        run: ./scripts/conformance-stack.sh down

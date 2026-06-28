@@ -339,3 +339,12 @@ files/exampleapp/sample.js
 .cargo/config.toml
 sigma-theme
 /build
+/conformance/.last-run.json
+/conformance/.bootstrap-plan.json
+/conformance/.full-run.log
+/conformance/.partial-run.log
+/conformance/mongo/
+.env.conformance-run
+core
+core.*
+/theme

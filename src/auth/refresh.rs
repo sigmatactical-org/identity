@@ -72,7 +72,9 @@ pub(crate) async fn refresh(
         return Err((StatusCode::UNAUTHORIZED, "Unauthorized").into_response());
     };
 
-    if session_tokens.ttl_gt(refresh_lock.remaining_secs_threshold) {
+    if session_tokens.ttl_gt(refresh_lock.remaining_secs_threshold)
+        && !crate::config::conformance_mode()
+    {
         refresh_lock.release(&userid).await;
         return Err((StatusCode::BAD_REQUEST, "Refresh too early").into_response());
     }

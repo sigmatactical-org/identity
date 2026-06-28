@@ -1,5 +1,6 @@
 pub mod allowlist;
 mod callback;
+mod conformance;
 mod csrftoken;
 mod login;
 mod logout;
@@ -145,7 +146,13 @@ pub(crate) fn auth_routes(
     app_config: AppConfigurationState,
 ) -> Router {
     let rlm = RefreshLockManager::new(remaining_secs_threshold);
-    Router::new()
+    let callback_route = if crate::config::conformance_mode() {
+        get(callback).post(conformance::callback_form_post)
+    } else {
+        get(callback)
+    };
+
+    let mut router = Router::new()
         .route(
             "/login",
             get(login).layer(
@@ -156,7 +163,7 @@ pub(crate) fn auth_routes(
         )
         .route(
             "/callback",
-            get(callback).layer(
+            callback_route.layer(
                 ServiceBuilder::new()
                     .layer(Extension(oidc_client.clone()))
                     .layer(Extension(client.clone())),
@@ -167,7 +174,7 @@ pub(crate) fn auth_routes(
             post(refresh).layer(
                 ServiceBuilder::new()
                     .layer(Extension(rlm))
-                    .layer(Extension(oidc_client)),
+                    .layer(Extension(oidc_client.clone())),
             ),
         )
         .route("/csrftoken", post(csrftoken))
@@ -175,7 +182,16 @@ pub(crate) fn auth_routes(
         .route("/logout", get(logout))
         .route("/logoutcallback", get(logout_callback))
         .layer(session_layer.clone())
-        .with_state(app_config)
+        .with_state(app_config);
+
+    if crate::config::conformance_mode() {
+        router = router.route(
+            "/conformance/discover",
+            get(conformance::discover).layer(Extension(oidc_client)),
+        );
+    }
+
+    router
 }
 
 pub(crate) fn random_alphanumeric_string(length: usize) -> String {

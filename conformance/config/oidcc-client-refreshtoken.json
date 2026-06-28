@@ -1,0 +1,11 @@
+{
+  "alias": "sigma-identity",
+  "description": "sigma-identity/{VERSION} refresh token RP tests",
+  "publish": "no",
+  "client": {
+    "client_id": "{CLIENT_ID}",
+    "client_secret": "{CLIENT_SECRET}",
+    "redirect_uris": ["https://localhost:3000/auth/callback"],
+    "scope": "openid profile email offline_access"
+  }
+}

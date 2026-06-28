@@ -1,0 +1,91 @@
+# OpenID Foundation conformance suite (prebuilt) + sigma-identity RP under test.
+# Requires /etc/hosts: 127.0.0.1 localhost.emobix.co.uk keycloak.localhost
+
+name: sigma-identity-conformance
+
+networks:
+  conformance-net:
+    name: sigma-identity-conformance
+
+services:
+  mongodb:
+    image: mongo:6.0.13
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - conformance-net
+
+  nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:latest
+    ports:
+      - "8443:8443"
+    depends_on:
+      - server
+    networks:
+      conformance-net:
+        aliases:
+          - localhost.emobix.co.uk
+
+  server:
+    image: registry.gitlab.com/openid/conformance-suite:latest
+    environment:
+      BASE_URL: https://localhost.emobix.co.uk:8443
+      MONGODB_HOST: mongodb
+      SPRING_PROFILES_ACTIVE: dev
+      OIDC_GOOGLE_CLIENTID: google-client
+      OIDC_GOOGLE_SECRET: google-secret
+      OIDC_GITLAB_CLIENTID: gitlab-client
+      OIDC_GITLAB_SECRET: gitlab-secret
+    depends_on:
+      - mongodb
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - conformance-net
+
+  redis:
+    image: redis:7-bookworm
+    networks:
+      - conformance-net
+
+  echo:
+    build:
+      context: ../.devcontainer/echo
+      dockerfile: Dockerfile
+    networks:
+      - conformance-net
+
+  identity:
+    image: mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+    environment:
+      IDENTITY_REDIS_URL: redis://redis:6379/
+    volumes:
+      - ..:/workspace:cached
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    networks:
+      - conformance-net
+    extra_hosts:
+      - "localhost.emobix.co.uk:host-gateway"
+
+  traefik:
+    build:
+      context: ../.devcontainer/traefik
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    command:
+      - "--providers.file.filename=/routing.yaml"
+      - "--entrypoints.identity.address=:3000"
+      - "--entrypoints.identity.http.tls=true"
+      - "--log.level=INFO"
+    volumes:
+      - ./traefik-rp.yaml:/routing.yaml:ro
+    depends_on:
+      - identity
+    networks:
+      conformance-net:
+        aliases:
+          - identity.localhost
+
+volumes:
+  mongo-data:

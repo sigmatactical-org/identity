@@ -1,0 +1,14 @@
+http:
+  routers:
+    identity:
+      entryPoints:
+        - identity
+      rule: PathPrefix(`/`)
+      service: identity
+      tls: {}
+
+  services:
+    identity:
+      loadBalancer:
+        servers:
+          - url: http://identity:3000

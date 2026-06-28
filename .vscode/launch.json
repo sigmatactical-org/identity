@@ -4,7 +4,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'sigma-identity'",
+            "name": "Debug sigma-identity",
             "cargo": {
                 "args": [
                     "build",
@@ -16,32 +16,37 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env",
+            "env": {
+                "RUST_LOG": "sigma_identity=debug,info"
+            }
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'sigma-identity'",
+            "name": "Debug sigma-identity tests (lib)",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=sigma-identity",
+                    "--lib",
                     "--package=sigma-identity"
                 ],
                 "filter": {
-                    "name": "sigma-identity",
-                    "kind": "bin"
+                    "name": "sigma_identity",
+                    "kind": "lib"
                 }
             },
             "args": [
-                "auth::status::tests::test_handles_authenticated_state"
+                "auth::status::tests::test_handles_authenticated_state",
+                "--nocapture"
             ],
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_LOG": "sigma_identity=debug,info",
-                "IDENTITY_TEST_REDIS_URL": "localhost:6379"
+                "RUST_BACKTRACE": "1",
+                "IDENTITY_TEST_REDIS_URL": "127.0.0.1:6379"
             }
         }
     ]
