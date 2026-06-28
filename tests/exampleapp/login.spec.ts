@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 import { configuration } from "../conf.ts";
-import { loginUser, loginViaExampleApp } from "../helper.ts";
+import { loginUser, logoutViaExampleApp } from "../helper.ts";
 
 test.describe("example app login", () => {
   test("completes OIDC login and logout", async ({ context, page }) => {
@@ -17,7 +17,6 @@ test.describe("example app login", () => {
     await loginUser(page, "user1");
     await expect(page.locator("#loginStatus")).toContainText("authenticated");
 
-    await page.getByRole("button", { name: "Logout" }).click();
-    await expect(page.locator("#loginStatus")).toContainText("not authenticated");
+    await logoutViaExampleApp(page);
   });
 });

@@ -64,12 +64,10 @@ fn build_logout_url(
     })?;
     {
         let mut pairs = url.query_pairs_mut();
-        if id_token.is_empty() {
-            pairs.append_pair("post_logout_redirect_uri", post_logout_redirect_uri);
-            pairs.append_pair("client_id", client_id);
-        } else {
+        pairs.append_pair("post_logout_redirect_uri", post_logout_redirect_uri);
+        pairs.append_pair("client_id", client_id);
+        if !id_token.is_empty() {
             pairs.append_pair("id_token_hint", id_token);
-            pairs.append_pair("post_logout_redirect_uri", post_logout_redirect_uri);
         }
     }
     Ok(url.to_string())
@@ -102,6 +100,7 @@ pub(crate) async fn logout(
             logout_query_params.app_uri.clone(),
         )
         .await;
+    let _ = session.save().await;
 
     let session_tokens: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
     let id_token = session_tokens.map(|st| st.id_token).unwrap_or_default();
@@ -248,6 +247,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .map(|hv| hv.to_str().unwrap().to_string())
+            .unwrap_or_default();
+        assert!(
+            location.contains("client_id="),
+            "logout URL should include client_id"
+        );
+        assert!(
+            location.contains("id_token_hint="),
+            "logout URL should include id_token_hint"
+        );
+        assert!(
+            location.contains("post_logout_redirect_uri="),
+            "logout URL should include post_logout_redirect_uri"
+        );
     }
 
     #[tokio::test]
