@@ -85,7 +85,10 @@ pub(crate) async fn refresh(
         return Err((StatusCode::BAD_REQUEST, "Refresh token missing").into_response());
     };
 
-    let response = match client.refresh_token(refresh_token.as_str()).await {
+    let response = match client
+        .refresh_token(refresh_token.as_str(), Some(&userid))
+        .await
+    {
         Ok(jwt) => {
             let _ = session.insert(SESSION_KEY_JWT, jwt).await;
             (StatusCode::OK, Json("Refresh successful")).into_response()

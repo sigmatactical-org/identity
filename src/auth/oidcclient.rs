@@ -96,6 +96,20 @@ fn decode_jwt_payload(id_token: &str) -> Result<Value> {
     Ok(serde_json::from_slice(&payload)?)
 }
 
+fn validate_userinfo_subject(
+    payload: &Value,
+    expected: &openidconnect::SubjectIdentifier,
+) -> Result<()> {
+    let sub = payload
+        .get("sub")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Userinfo response missing sub claim"))?;
+    if sub != expected.as_str() {
+        return Err(anyhow!("Userinfo sub does not match ID token sub"));
+    }
+    Ok(())
+}
+
 fn token_response_to_session_tokens(
     token_response: &KeycloakTokenResponse,
 ) -> Result<SessionTokens> {
@@ -364,6 +378,36 @@ impl OIDCClient {
         ))
     }
 
+    async fn verify_refreshed_id_token(
+        &self,
+        inner: &OidcInner,
+        id_token: &CoreIdToken,
+    ) -> Result<CoreIdTokenClaims> {
+        for attempt in 0..2 {
+            let jwks = self.fetch_jwks(&inner.metadata).await?;
+            let verifier = self.id_token_verifier(inner, jwks);
+            match id_token.claims(&verifier, |_nonce: Option<&Nonce>| Ok(())) {
+                Ok(claims) => return Ok(claims.clone()),
+                Err(
+                    err @ ClaimsVerificationError::SignatureVerification(
+                        SignatureVerificationError::CryptoError(_)
+                        | SignatureVerificationError::AmbiguousKeyId(_)
+                        | SignatureVerificationError::NoMatchingKey,
+                    ),
+                ) if attempt == 0 => {
+                    debug!(
+                        "Refresh ID token signature verification failed, refetching JWKS: {err:?}"
+                    );
+                    continue;
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Err(anyhow!(
+            "Refresh ID token signature verification failed after JWKS refresh"
+        ))
+    }
+
     async fn resolve_distributed_claims(
         &self,
         inner: &OidcInner,
@@ -525,6 +569,9 @@ impl OIDCClient {
         if let Some(kc_idp_hint) = authorize_request.kc_idp_hint {
             b = b.add_extra_param("kc_idp_hint", kc_idp_hint);
         }
+        if config::oidc_authorize_response_mode().as_deref() == Some("form_post") {
+            b = b.add_extra_param("response_mode", "form_post");
+        }
 
         let (auth_url, csrf_token, nonce) = b.url();
 
@@ -586,6 +633,7 @@ impl OIDCClient {
                 )
                 .await?;
             if let Some(payload) = userinfo_payload.as_ref() {
+                validate_userinfo_subject(payload, claims.subject())?;
                 self.resolve_distributed_claims_from_userinfo_payload(&inner, payload, &nonce)
                     .await?;
             }
@@ -598,9 +646,13 @@ impl OIDCClient {
             .map(|tr| (tr, claims.subject().to_string()))
     }
 
-    pub(crate) async fn refresh_token(&self, refresh_token: &str) -> Result<SessionTokens> {
+    pub(crate) async fn refresh_token(
+        &self,
+        refresh_token: &str,
+        expected_subject: Option<&str>,
+    ) -> Result<SessionTokens> {
         let inner = self.ensure_inner().await?;
-        inner
+        let token_response = inner
             .client
             .exchange_refresh_token(&RefreshToken::new(refresh_token.to_string()))?
             .request_async(&self.http_client)
@@ -608,8 +660,45 @@ impl OIDCClient {
             .map_err(|tokenerror| {
                 debug_token_request_error(&tokenerror);
                 anyhow!("Token exchange failed")
-            })
-            .and_then(|tr| token_response_to_session_tokens(&tr))
+            })?;
+
+        if let Some(id_token) = token_response.id_token() {
+            let claims = self.verify_refreshed_id_token(&inner, id_token).await?;
+
+            if let Some(expected) = expected_subject {
+                if claims.subject().as_str() != expected {
+                    return Err(anyhow!("ID token subject mismatch"));
+                }
+            }
+
+            if let Some(expected_access_token_hash) = claims.access_token_hash() {
+                let jwks = self.fetch_jwks(&inner.metadata).await?;
+                let verifier = self.id_token_verifier(&inner, jwks);
+                let actual_access_token_hash = AccessTokenHash::from_token(
+                    token_response.access_token(),
+                    id_token.signing_alg()?,
+                    id_token.signing_key(&verifier)?,
+                )?;
+                if actual_access_token_hash != *expected_access_token_hash {
+                    return Err(anyhow!("Invalid access token"));
+                }
+            }
+
+            if config::conformance_mode() {
+                let userinfo_payload = self
+                    .fetch_userinfo(
+                        &inner,
+                        token_response.access_token(),
+                        Some(claims.subject()),
+                    )
+                    .await?;
+                if let Some(payload) = userinfo_payload.as_ref() {
+                    validate_userinfo_subject(payload, claims.subject())?;
+                }
+            }
+        }
+
+        token_response_to_session_tokens(&token_response)
     }
 
     async fn fetch_userinfo(

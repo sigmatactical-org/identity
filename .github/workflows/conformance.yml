@@ -1,14 +1,25 @@
 name: OpenID Conformance
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "conformance/**"
+      - "conformance-tool/**"
+      - "echo/**"
+      - "scripts/conformance-stack.sh"
+      - ".env.conformance-ci"
+      - "Cargo.toml"
+      - "Cargo.lock"
   workflow_dispatch:
     inputs:
       plan:
-        description: Plan name (empty = smoke test only)
+        description: Plan name (empty = oidcc-client-test-plan; use "all" for every plan)
         required: false
         default: ""
   schedule:
-    # Weekly Sunday 04:00 UTC — pulls large suite images; allow ~2h.
+    # Weekly Sunday 04:00 UTC — full certification matrix.
     - cron: "0 4 * * 0"
 
 concurrency:
@@ -25,6 +36,9 @@ env:
   CONFORMANCE_SERVER: https://localhost.emobix.co.uk:8443
   CLIENT_ID: sigma-identity-conformance
   CLIENT_SECRET: conformance-client-secret-not-for-production
+  CONFORMANCE_MODULE_SETTLE: "20"
+  CONFORMANCE_MODULE_GAP: "25"
+  CONFORMANCE_MODULE_TIMEOUT: "360"
 
 jobs:
   rp-conformance:
@@ -54,12 +68,17 @@ jobs:
 
       - name: Run RP conformance tests
         run: |
-          if [[ -n "${{ github.event.inputs.plan }}" ]]; then
-            ./scripts/conformance-stack.sh test --plan "${{ github.event.inputs.plan }}"
+          plan="${{ github.event.inputs.plan }}"
+          if [[ -n "$plan" ]]; then
+            if [[ "$plan" == "all" ]]; then
+              ./scripts/conformance-stack.sh test
+            else
+              ./scripts/conformance-stack.sh test --plan "$plan"
+            fi
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
             ./scripts/conformance-stack.sh test
           else
-            ./scripts/conformance-stack.sh test-smoke
+            ./scripts/conformance-stack.sh test --plan oidcc-client-test-plan
           fi
 
       - uses: actions/upload-artifact@v5

@@ -50,8 +50,8 @@ services:
 
   echo:
     build:
-      context: ../.devcontainer/echo
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: .devcontainer/echo/Dockerfile
     networks:
       - conformance-net
 

@@ -1,13 +1,11 @@
-# Debian bookworm dev echo backend (replaces third-party Alpine/scratch images).
+# Debian bookworm dev echo backend (Rust; no Python).
+FROM rust:1.90-bookworm AS build
+WORKDIR /src
+COPY echo/Cargo.toml echo/src ./echo/
+RUN cd echo && cargo build --release
+
 FROM debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /srv
-COPY echo_server.py /srv/echo_server.py
-
+COPY --from=build /src/echo/target/release/sigma-identity-echo /usr/local/bin/sigma-identity-echo
 USER nobody
 EXPOSE 3000
-CMD ["python3", "/srv/echo_server.py"]
+CMD ["sigma-identity-echo"]

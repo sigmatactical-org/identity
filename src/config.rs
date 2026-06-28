@@ -104,3 +104,16 @@ pub fn oidc_jwks_refresh_after_userinfo() -> bool {
         Some("1") | Some("true") | Some("TRUE")
     )
 }
+
+/// When set to `form_post`, request authorization responses via POST to redirect_uri.
+pub fn oidc_authorize_response_mode() -> Option<String> {
+    var_optional("OIDC_AUTHORIZE_RESPONSE_MODE").map(|v| v.trim().to_ascii_lowercase())
+}
+
+/// When true, include id_token_hint on RP-initiated logout (conformance / Keycloak).
+pub fn logout_send_id_token_hint() -> bool {
+    matches!(
+        var_optional("LOGOUT_SEND_ID_TOKEN_HINT").as_deref(),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}

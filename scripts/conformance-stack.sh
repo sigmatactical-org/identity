@@ -26,14 +26,21 @@ hosts_entries() {
 }
 
 ensure_binary() {
+  if "${COMPOSE[@]}" ps --status running identity 2>/dev/null | grep -q identity; then
+    "${COMPOSE[@]}" exec -T identity bash -lc \
+      'pkill -x sigma-identity 2>/dev/null || true; for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x sigma-identity >/dev/null || break; sleep 1; done; cd /workspace && cargo build --release -p sigma-identity -p sigma-conformance'
+    return
+  fi
   mkdir -p target/release
-  cargo build --release -p sigma-identity
+  cargo build --release -p sigma-identity -p sigma-conformance
   if [[ -f ../target/release/sigma-identity ]]; then
     cp ../target/release/sigma-identity target/release/sigma-identity
+    cp ../target/release/sigma-conformance target/release/sigma-conformance 2>/dev/null || true
   elif [[ ! -f target/release/sigma-identity ]]; then
     ./scripts/prepare-local.sh
-    cargo build --release -p sigma-identity
+    cargo build --release -p sigma-identity -p sigma-conformance
     cp ../target/release/sigma-identity target/release/sigma-identity
+    cp ../target/release/sigma-conformance target/release/sigma-conformance 2>/dev/null || true
   fi
 }
 
@@ -60,7 +67,7 @@ case "$cmd" in
     ;;
   bootstrap)
     hosts_entries
-    python3 conformance/scripts/bootstrap.py \
+    "$ROOT/target/release/sigma-conformance" bootstrap \
       --conformance-server "$CONFORMANCE_SERVER" \
       --client-id "$CLIENT_ID" \
       --client-secret "$CLIENT_SECRET"
@@ -90,15 +97,15 @@ case "$cmd" in
     ensure_binary
     export CONFORMANCE_SERVER="$CONFORMANCE_SERVER" CLIENT_ID CLIENT_SECRET
     if [[ $# -lt 2 ]]; then
-      python3 conformance/scripts/run.py --all
+      "$ROOT/target/release/sigma-conformance" run --all
     else
-      python3 conformance/scripts/run.py "${@:2}"
+      "$ROOT/target/release/sigma-conformance" run "${@:2}"
     fi
     ;;
   test-smoke)
     ensure_binary
     export CONFORMANCE_SERVER="$CONFORMANCE_SERVER" CLIENT_ID CLIENT_SECRET
-    python3 conformance/scripts/run.py --plan oidcc-client-test-plan --module oidcc-client-test "${@:2}"
+    "$ROOT/target/release/sigma-conformance" run --plan oidcc-client-test-plan --module oidcc-client-test "${@:2}"
     ;;
   *)
     echo "usage: $0 {up|down|wait-suite|bootstrap|build|run|wait|test|test-smoke}" >&2

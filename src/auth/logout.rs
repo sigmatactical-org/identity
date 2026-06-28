@@ -15,10 +15,10 @@ use tracing::{debug, trace, warn};
 use url::Url;
 
 use crate::session::{
-    LOGOUT_APP_URI_COOKIE, SESSION_KEY_LOGOUT_APP_URI, SameSiteSetting,
+    LOGOUT_APP_URI_COOKIE, SESSION_KEY_JWT, SESSION_KEY_LOGOUT_APP_URI, SameSiteSetting,
 };
 
-use super::allowlist::UriAllowlist;
+use super::{SessionTokens, allowlist::UriAllowlist};
 
 #[derive(Clone, Debug)]
 pub enum LogoutBehavior {
@@ -93,10 +93,23 @@ fn clear_logout_app_uri_cookie() -> Cookie<'static> {
         .build()
 }
 
+/// Keycloak returns the exact `post_logout_redirect_uri`; embed `app_uri` so the
+/// callback survives the IdP round-trip even when session/cookie state is lost.
+fn build_post_logout_redirect_uri(
+    redirect_uri: &str,
+    app_uri: &str,
+) -> Result<String, Box<Response>> {
+    let mut url = Url::parse(redirect_uri)
+        .map_err(|_| Box::new((StatusCode::BAD_REQUEST, "Invalid redirect_uri").into_response()))?;
+    url.query_pairs_mut().append_pair("app_uri", app_uri);
+    Ok(url.to_string())
+}
+
 fn build_logout_url(
     logout_uri: &str,
     client_id: &str,
     post_logout_redirect_uri: &str,
+    id_token: &str,
 ) -> Result<String, Box<Response>> {
     let mut url = Url::parse(logout_uri).map_err(|_| {
         Box::new(
@@ -111,6 +124,9 @@ fn build_logout_url(
         let mut pairs = url.query_pairs_mut();
         pairs.append_pair("post_logout_redirect_uri", post_logout_redirect_uri);
         pairs.append_pair("client_id", client_id);
+        if !id_token.is_empty() {
+            pairs.append_pair("id_token_hint", id_token);
+        }
     }
     Ok(url.to_string())
 }
@@ -147,10 +163,30 @@ pub(crate) async fn logout(
 
     let jar = jar.add(logout_app_uri_cookie(&logout_query_params.app_uri));
 
+    let post_logout_redirect_uri = match build_post_logout_redirect_uri(
+        &logout_query_params.redirect_uri,
+        &logout_query_params.app_uri,
+    ) {
+        Ok(uri) => uri,
+        Err(resp) => return *resp,
+    };
+
+    let id_token = if crate::config::logout_send_id_token_hint() {
+        session
+            .get::<SessionTokens>(SESSION_KEY_JWT)
+            .await
+            .unwrap_or(None)
+            .map(|st| st.id_token)
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
     match build_logout_url(
         &logout_app_settings.logout_uri,
         &logout_app_settings.client_id,
-        &logout_query_params.redirect_uri,
+        &post_logout_redirect_uri,
+        &id_token,
     ) {
         Ok(uri) => (jar, Redirect::to(uri.as_str())).into_response(),
         Err(resp) => *resp,
@@ -164,16 +200,19 @@ pub(crate) async fn logout_callback(
     jar: CookieJar,
     callback_query_params: Query<LogoutCallbackQueryParams>,
 ) -> Response {
-    let app_uri = jar
-        .get(LOGOUT_APP_URI_COOKIE)
-        .map(|cookie| cookie.value().to_string())
-        .or(callback_query_params.app_uri.clone())
+    let app_uri = callback_query_params
+        .app_uri
+        .clone()
+        .or_else(|| {
+            jar.get(LOGOUT_APP_URI_COOKIE)
+                .map(|cookie| cookie.value().to_string())
+        })
         .or(session
             .get::<String>(SESSION_KEY_LOGOUT_APP_URI)
             .await
             .unwrap_or_default())
         .unwrap_or_else(|| {
-            warn!("logout app_uri not found in cookie, callback query, or session");
+            warn!("logout app_uri not found in callback query, cookie, or session");
             "/".to_string()
         });
 
@@ -319,11 +358,15 @@ mod tests {
         );
         assert!(
             !location.contains("id_token_hint="),
-            "logout URL should not include id_token_hint"
+            "logout URL should not include id_token_hint by default"
         );
         assert!(
             set_cookie.contains(LOGOUT_APP_URI_COOKIE),
             "logout should set app_uri cookie, got {set_cookie}"
+        );
+        assert!(
+            location.contains("app_uri"),
+            "logout URL should embed app_uri in post_logout_redirect_uri"
         );
     }
 

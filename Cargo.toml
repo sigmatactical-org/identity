@@ -1,3 +1,11 @@
+[workspace]
+members = [".", "conformance-tool", "echo"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
 [package]
 name = "sigma-identity"
 version = "0.0.1"

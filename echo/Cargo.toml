@@ -1,0 +1,12 @@
+[package]
+name = "sigma-identity-echo"
+version = "0.0.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+http-body-util = "0.1.2"
+hyper = { version = "1.5", features = ["server", "http1"] }
+hyper-util = { version = "0.1.5", features = ["server", "tokio"] }
+tokio = { version = "1.27", features = ["macros", "rt-multi-thread", "net"] }

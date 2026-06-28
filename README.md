@@ -135,7 +135,7 @@ CI (`.github/workflows/playwright.yml`) runs **Chromium only**; locally you can 
 
 ### OpenID Connect conformance (RP)
 
-Runs the [OpenID Foundation conformance suite](https://gitlab.com/openid/conformance-suite) locally with **sigma-identity as the relying party** and the suite’s fake OP. The test runner starts each module first, then starts identity when the suite reaches `WAITING`. See [`conformance/README.md`](conformance/README.md) for details.
+Runs the [OpenID Foundation conformance suite](https://gitlab.com/openid/conformance-suite) locally with **sigma-identity as the relying party** and the suite’s fake OP. See [`conformance/README.md`](conformance/README.md) for details.
 
 ```bash
 # /etc/hosts: 127.0.0.1 localhost.emobix.co.uk
@@ -144,13 +144,12 @@ Runs the [OpenID Foundation conformance suite](https://gitlab.com/openid/conform
 ./scripts/conformance-stack.sh wait-suite
 ./scripts/conformance-stack.sh build
 ./scripts/conformance-stack.sh test-smoke    # one dev-plan module
+./scripts/conformance-stack.sh test --plan oidcc-client-test-plan
 ./scripts/conformance-stack.sh test            # all configured RP plans
 ./scripts/conformance-stack.sh down
 ```
 
-Optional: `./scripts/conformance-stack.sh bootstrap` records fake-OP plan metadata only; it does not start tests.
-
-CI: `.github/workflows/conformance.yml` (weekly full run + manual dispatch). Use the hosted [certification.openid.net](https://www.certification.openid.net/) for formal certification submissions.
+CI (`.github/workflows/conformance.yml`): full dev plan on `main` pushes; all plans weekly; manual dispatch with optional `plan` input.
 
 ## File serving
 

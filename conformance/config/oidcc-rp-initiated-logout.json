@@ -2,11 +2,42 @@
   "alias": "sigma-identity",
   "description": "sigma-identity/{VERSION} RP-initiated logout",
   "publish": "no",
+  "server": {
+    "discoveryUrl": "https://localhost.emobix.co.uk:8443/test/a/sigma-identity/.well-known/openid-configuration"
+  },
   "client": {
     "client_id": "{CLIENT_ID}",
     "client_secret": "{CLIENT_SECRET}",
     "redirect_uris": ["https://localhost:3000/auth/callback"],
     "post_logout_redirect_uris": ["https://localhost:3000/conformance/"],
     "scope": "openid profile email"
-  }
+  },
+  "browser": [
+    {
+      "match": "https://localhost.emobix.co.uk:8443/test/a/sigma-identity/authorize*",
+      "tasks": [
+        {
+          "task": "Login at conformance OP",
+          "optional": true,
+          "commands": [
+            ["click", "xpath", "//input[@type='submit']", "optional"],
+            ["click", "xpath", "//button[contains(.,'Continue') or contains(.,'continue')]", "optional"]
+          ]
+        }
+      ]
+    },
+    {
+      "match": "https://localhost.emobix.co.uk:8443/test/a/sigma-identity/logout*",
+      "tasks": [
+        {
+          "task": "Confirm logout at conformance OP",
+          "optional": true,
+          "commands": [
+            ["click", "xpath", "//input[@type='submit']", "optional"],
+            ["click", "xpath", "//button[contains(.,'Continue') or contains(.,'continue') or contains(.,'Yes')]", "optional"]
+          ]
+        }
+      ]
+    }
+  ]
 }

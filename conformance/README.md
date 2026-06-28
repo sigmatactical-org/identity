@@ -5,7 +5,7 @@ Automated [OpenID Foundation conformance suite](https://gitlab.com/openid/confor
 ## Prerequisites
 
 - Docker Compose v2
-- Python 3.11+
+- Rust toolchain (builds `sigma-conformance` and `sigma-identity`)
 - `/etc/hosts`: `127.0.0.1 localhost.emobix.co.uk`
 - Built theme (`./scripts/prepare-local.sh`)
 
@@ -25,17 +25,19 @@ RP harness UI: [https://localhost:3000/conformance/](https://localhost:3000/conf
 
 ## Plans
 
+## Plans
+
 | Plan | Config | Notes |
 |------|--------|-------|
-| `oidcc-client-test-plan` | `config/oidcc-client-test.json` | Development smoke (CI default on dispatch) |
-| `oidcc-client-basic-certification-test-plan` | `config/oidcc-client-basic.json` | Basic RP certification profile |
-| `oidcc-client-refreshtoken-test-plan` | `config/oidcc-client-refreshtoken.json` | Refresh token behaviour |
-| `oidcc-rp-initiated-logout-certification-test-plan` | `config/oidcc-rp-initiated-logout.json` | RP-initiated logout |
+| `oidcc-client-test-plan` | `config/oidcc-client-test.json` | Development plan (29 modules; CI on `main` push) |
+| `oidcc-client-basic-certification-test-plan` | `config/oidcc-client-basic.json` | Basic RP certification (14 modules; `client_secret_basic`) |
+| `oidcc-client-refreshtoken-test-plan` | `config/oidcc-client-refreshtoken.json` | Refresh token (`form_post`, 3 modules) |
+| `oidcc-rp-initiated-logout-certification-test-plan` | `config/oidcc-rp-initiated-logout.json` | RP-initiated logout (11 modules; needs browser OP confirm — see below) |
 
 Run one plan:
 
 ```bash
-python3 conformance/scripts/run.py --plan oidcc-client-test-plan
+./target/release/sigma-conformance run --plan oidcc-client-test-plan
 ```
 
 Run all plans in `plans.json`:
@@ -53,7 +55,28 @@ Copy [`.env.conformance-ci`](../.env.conformance-ci) — key variables:
 | `IDENTITY_OIDC_ISSUER_URL` | Fake OP: `https://localhost.emobix.co.uk:8443/test/a/sigma-identity/` (trailing slash required) |
 | `IDENTITY_OIDC_CLIENT_ID` / `SECRET` | Must match `conformance/config/*.json` |
 | `IDENTITY_OIDC_TOKEN_ENDPOINT_AUTH_METHOD` | `client_secret_post` for most RP plans |
+| `IDENTITY_OIDC_AUTHORIZE_RESPONSE_MODE` | Set to `form_post` for refresh-token plan (runner sets per plan) |
+| `IDENTITY_LOGOUT_SEND_ID_TOKEN_HINT` | `1` for RP-initiated logout plan (runner sets per module) |
 | `IDENTITY_CONFORMANCE_MODE` | Enables conformance harness under `/conformance/` |
+
+## CI
+
+`.github/workflows/conformance.yml`:
+
+- **Push to `main`** (conformance-related paths): full `oidcc-client-test-plan`
+- **Weekly schedule**: all plans in `plans.json`
+- **Manual dispatch**: optional `plan` input (plan name or `all`)
+
+Settle/gap env vars in the workflow: `CONFORMANCE_MODULE_SETTLE=20`, `CONFORMANCE_MODULE_GAP=25`, `CONFORMANCE_MODULE_TIMEOUT=360`.
+
+### Local pass status (automated curl runner)
+
+| Plan | Result |
+|------|--------|
+| `oidcc-client-test-plan` | 28 passed, 1 skipped |
+| `oidcc-client-basic-certification-test-plan` | 13 passed, 1 skipped |
+| `oidcc-client-refreshtoken-test-plan` | 3 passed |
+| `oidcc-rp-initiated-logout-certification-test-plan` | Blocked — suite requires `server.discoveryUrl` at plan creation, but the fake OP only accepts discovery after the module reaches `WAITING`. Use the suite UI + `browser` automation in the plan config, or an always-on OP (see SimpleSAMLphp conformance configs). |
 
 ## Architecture
 
@@ -67,9 +90,7 @@ Bootstrap **must not** run identity before a test module: the fake OP exists onl
 
 ## BFF caveats
 
-sigma-identity is a BFF (custom `/auth/login`, allowlists, Redis sessions), not a minimal OIDC client library demo. Some certification modules may fail until the harness or auth routes are extended. Use results to find spec gaps; Keycloak remains the certified OP in production.
-
-Formal certification requires the hosted suite at [certification.openid.net](https://www.certification.openid.net/) and published artifacts with client logs.
+sigma-identity is a BFF (custom `/auth/login`, allowlists, Redis sessions), not a minimal OIDC client library demo. The runner drives flows via curl against `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/conformance/discover`. Formal hosted certification uses [certification.openid.net](https://www.certification.openid.net/).
 
 ## Results
 
