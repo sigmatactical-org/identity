@@ -17,6 +17,7 @@ authors = ["Sigma Tactical Group contributors <https://github.com/sigmatactical-
 
 [dependencies]
 anyhow = "1.0.70"
+askama = "0.16.0"
 axum = "0.8.1"
 axum-extra = { version = "0.12.5", features = ["cookie"] }
 axum-macros = "0.5.0"

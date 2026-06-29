@@ -665,10 +665,10 @@ impl OIDCClient {
         if let Some(id_token) = token_response.id_token() {
             let claims = self.verify_refreshed_id_token(&inner, id_token).await?;
 
-            if let Some(expected) = expected_subject {
-                if claims.subject().as_str() != expected {
-                    return Err(anyhow!("ID token subject mismatch"));
-                }
+            if let Some(expected) = expected_subject
+                && claims.subject().as_str() != expected
+            {
+                return Err(anyhow!("ID token subject mismatch"));
             }
 
             if let Some(expected_access_token_hash) = claims.access_token_hash() {

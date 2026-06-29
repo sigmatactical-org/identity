@@ -2542,6 +2542,7 @@ name = "sigma-identity"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "askama",
  "axum",
  "axum-extra",
  "axum-macros",

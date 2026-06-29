@@ -153,7 +153,7 @@ CI (`.github/workflows/conformance.yml`): full dev plan on `main` pushes; all pl
 
 ## File serving
 
-App-specific static pages (e.g. `files/exampleapp/`) live under `IDENTITY_FILES_DIR`. Shared chrome — CSS, JS, home page, favicon — comes from the [sigma-theme](https://github.com/sigmatactical-org/sigma-theme) crate (embedded at compile time via `./scripts/prepare-local.sh`).
+App-specific pages (e.g. `/exampleapp/`) render Askama templates under `templates/` that extend [sigma-theme](https://github.com/sigmatactical-org/sigma-theme) `base.html`. Static assets (JS, CSS) for those apps live under `files/`. Shared chrome — CSS, JS, home page, favicon — comes from the sigma-theme crate (embedded at compile time via `./scripts/prepare-local.sh`).
 
 ## Docker
 

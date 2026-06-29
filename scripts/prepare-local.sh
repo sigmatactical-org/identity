@@ -17,6 +17,11 @@ cat > .cargo/config.toml <<EOF
 sigma-theme = { path = "$THEME_PATH" }
 EOF
 
+cat > askama.toml <<EOF
+[general]
+dirs = ["templates", "$THEME_PATH/assets/templates"]
+EOF
+
 (cd "$THEME_PATH/ts" && npm ci && npm run check && npm run build)
 (cd ts && npm ci && npm run check && npm run build)
 

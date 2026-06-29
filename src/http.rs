@@ -10,10 +10,11 @@ use axum::{
     body::Body,
     http::{
         HeaderValue, StatusCode, Uri,
-        header::{AUTHORIZATION, COOKIE, HOST},
+        header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST},
     },
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Response},
     routing::delete,
+    routing::get,
 };
 use axum_extra::extract::CookieJar;
 use axum_macros::debug_handler;
@@ -32,7 +33,10 @@ use crate::{
     config,
     monitoring::health_routes,
     session::{IdentitySessionLayer, SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT},
+    templates,
 };
+
+const THEMED_INDEX_APPS: &[&str] = &["exampleapp", "conformance"];
 
 pub(crate) static HEADER_KEY_CSRF_TOKEN: &str = "x-csrf-token";
 
@@ -127,6 +131,12 @@ pub(crate) async fn port_listener() -> Result<tokio::net::TcpListener> {
     }
 }
 
+fn is_themed_index_app(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| THEMED_INDEX_APPS.contains(&name))
+}
+
 fn walk_dir(path: &str) -> Result<Vec<PathBuf>> {
     let root = Path::new(path);
     if !root.is_dir() {
@@ -143,6 +153,7 @@ fn walk_dir(path: &str) -> Result<Vec<PathBuf>> {
                 }
                 if entry.file_name() == "index.html"
                     && let Some(parent) = entry.path().parent()
+                    && !is_themed_index_app(parent)
                 {
                     paths.push(parent.to_owned());
                 }
@@ -151,6 +162,59 @@ fn walk_dir(path: &str) -> Result<Vec<PathBuf>> {
         }
     }
     Ok(paths)
+}
+
+fn themed_page_routes() -> Router {
+    let mut router = Router::new()
+        .route("/exampleapp", get(exampleapp_page))
+        .route("/exampleapp/", get(exampleapp_page));
+
+    if config::conformance_mode() {
+        router = router
+            .route("/conformance", get(conformance_page))
+            .route("/conformance/", get(conformance_page));
+    }
+
+    router
+}
+
+fn mount_themed_app_assets(mut app: Router, files_root: &Path) -> Router {
+    let exampleapp_dir = files_root.join("exampleapp");
+    if exampleapp_dir.is_dir() {
+        debug!("Serving themed app assets from {exampleapp_dir:?}");
+        app = app.nest_service("/exampleapp", ServeDir::new(exampleapp_dir));
+    }
+    app
+}
+
+async fn exampleapp_page() -> impl IntoResponse {
+    match templates::render_exampleapp_html() {
+        Ok(html) => Html(html).into_response(),
+        Err(error) => {
+            error!("Failed to render example app page: {error}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "Internal Server Error",
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn conformance_page() -> impl IntoResponse {
+    match templates::render_conformance_html() {
+        Ok(html) => Html(html).into_response(),
+        Err(error) => {
+            error!("Failed to render conformance page: {error}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(CONTENT_TYPE, "text/plain; charset=utf-8")],
+                "Internal Server Error",
+            )
+                .into_response()
+        }
+    }
 }
 
 fn api_proxy(
@@ -355,7 +419,10 @@ pub(crate) fn app(
                 app_config,
             ),
         )
-        .merge(sigma_theme::axum::router());
+        .merge(sigma_theme::axum::router())
+        .merge(themed_page_routes());
+
+    app = mount_themed_app_assets(app, files_root_path);
 
     for spa_app in spa_apps {
         let route_suffix = spa_app

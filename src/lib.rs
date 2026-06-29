@@ -20,6 +20,7 @@ mod config;
 mod http;
 mod monitoring;
 mod session;
+mod templates;
 
 async fn shutdown_signal() {
     let ctrl_c = async {
