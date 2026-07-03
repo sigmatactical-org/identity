@@ -18,6 +18,25 @@ pub fn default_variant() -> Map<String, Value> {
 }
 
 pub fn identity_root() -> PathBuf {
+    if let Ok(root) = std::env::var("SIGMA_IDENTITY_ROOT") {
+        let path = PathBuf::from(root);
+        if path.is_dir() {
+            return path;
+        }
+    }
+
+    if let Ok(mut dir) = std::env::current_dir() {
+        loop {
+            if dir.join("conformance/plans.json").is_file() {
+                return dir;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+
+    // Devcontainer builds compile in /workspace; fall back when cwd discovery fails.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
