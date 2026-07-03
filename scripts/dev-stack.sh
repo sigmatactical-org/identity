@@ -1,44 +1,50 @@
 #!/usr/bin/env bash
-# Dependencies for sigma-identity: Redis, Keycloak (dev realm), echo backend.
+# Dependencies for sigma-identity: PostgreSQL (sigma-pg), Keycloak (dev realm), echo.
 # Use with host-native `cargo run` and .env.host (see README).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/.devcontainer"
 
-COMPOSE=(docker compose -f docker-compose.dev-deps.yml)
+# shellcheck source=scripts/sigma-pg-dir.sh
+source "$ROOT/scripts/sigma-pg-dir.sh"
+
+DEPS_COMPOSE=(docker compose -f docker-compose.dev-deps.yml)
+PG_COMPOSE=(docker compose -f "$(sigma_pg_compose)")
 
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://127.0.0.1:8101/realms/multcorp}"
-REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/}"
+DATABASE_URL="${DATABASE_URL:-postgres://sigma:sigma@127.0.0.1:5432/sigma}"
 ECHO_URL="${ECHO_URL:-http://127.0.0.1:8088/}"
 
-redis_on_host() {
-  if command -v redis-cli >/dev/null 2>&1; then
-    redis-cli -h 127.0.0.1 -p 6379 ping 2>/dev/null | grep -q PONG && return 0
+postgres_on_host() {
+  if command -v pg_isready >/dev/null 2>&1; then
+    pg_isready -h 127.0.0.1 -p 5432 -U sigma -d sigma >/dev/null 2>&1 && return 0
   fi
-  (echo -en "PING\r\n"; sleep 0.1) 2>/dev/null | nc -w 1 127.0.0.1 6379 2>/dev/null | grep -q PONG
+  return 1
 }
 
 cmd="${1:-}"
 case "$cmd" in
   up)
-    SCALE_REDIS=()
-    if redis_on_host; then
-      echo "Redis already listening on 127.0.0.1:6379 — using host Redis (not starting container)"
-      SCALE_REDIS=(--scale redis=0)
+    if postgres_on_host; then
+      echo "PostgreSQL already listening on 127.0.0.1:5432"
+    else
+      echo "Starting PostgreSQL from sigma-pg..."
+      (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" up -d)
     fi
-    "${COMPOSE[@]}" up -d --build "${SCALE_REDIS[@]}"
+    "${DEPS_COMPOSE[@]}" up -d --build
     ;;
   down)
-    "${COMPOSE[@]}" down
+    "${DEPS_COMPOSE[@]}" down
+    (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" down) || true
     ;;
   wait)
-    if redis_on_host; then
-      echo "Redis ready (host)"
+    if postgres_on_host; then
+      echo "PostgreSQL ready (host)"
     else
-      echo "Waiting for Redis..."
+      echo "Waiting for PostgreSQL..."
       for _ in $(seq 1 30); do
-        if "${COMPOSE[@]}" exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
-          echo "Redis ready"
+        if (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" exec -T postgres pg_isready -U sigma -d sigma >/dev/null 2>&1); then
+          echo "PostgreSQL ready"
           break
         fi
         sleep 1
@@ -54,7 +60,7 @@ case "$cmd" in
     done
     if ! curl -sf "${KEYCLOAK_URL}/.well-known/openid-configuration" >/dev/null 2>&1; then
       echo "error: Keycloak did not become ready at ${KEYCLOAK_URL}" >&2
-      "${COMPOSE[@]}" logs keycloak
+      "${DEPS_COMPOSE[@]}" logs keycloak
       exit 1
     fi
     echo "Waiting for echo at ${ECHO_URL}..."
@@ -66,7 +72,7 @@ case "$cmd" in
       sleep 1
     done
     echo "error: echo backend did not become ready" >&2
-    "${COMPOSE[@]}" logs echo
+    "${DEPS_COMPOSE[@]}" logs echo
     exit 1
     ;;
   env)
@@ -74,7 +80,12 @@ case "$cmd" in
     echo "Wrote $ROOT/.env from .env.host"
     ;;
   logs)
-    "${COMPOSE[@]}" logs -f "${2:-}"
+    service="${2:-}"
+    if [[ -n "$service" && "$service" == "postgres" ]]; then
+      (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" logs -f postgres)
+    else
+      "${DEPS_COMPOSE[@]}" logs -f "${service:-}"
+    fi
     ;;
   *)
     echo "usage: $0 {up|down|wait|env|logs [service]}" >&2

@@ -10,7 +10,8 @@ Shared site chrome comes from [sigma-theme](https://github.com/sigmatactical-org
 
 ## Features
 
-- **Authentication** — OIDC login (e.g. Keycloak), JWT stored in a Redis-backed server session, exposed to browsers via an http-only cookie
+- **Authentication** — OIDC login (e.g. Keycloak), JWT stored in a PostgreSQL-backed server session, exposed to browsers via an http-only cookie
+- **Registration** — self-service account creation at `/register` (Keycloak Admin API), with prefilled query parameters and validated `return_url` redirect
 - **API proxy** — forward authenticated requests to backends with JWT attached; CSRF on all methods (including GET); path-based routing to multiple targets; unauthenticated requests receive 401
 - **File serving** — serve a local directory; directories with `index.html` behave as single-page apps
 
@@ -23,7 +24,7 @@ Required:
 | Variable | Purpose |
 |---|---|
 | `IDENTITY_BIND_PORT` | Listen port (default `3000`) |
-| `IDENTITY_REDIS_URL` | Redis session store |
+| `IDENTITY_DATABASE_URL` | PostgreSQL connection URL for sessions |
 | `IDENTITY_SESSION_SECRET` | Session encryption key (minimum 32 bytes) |
 | `IDENTITY_OIDC_ISSUER_URL` | OIDC issuer |
 | `IDENTITY_OIDC_CLIENT_ID` | OIDC client id |
@@ -35,6 +36,8 @@ Required:
 | `IDENTITY_LOGOUT_SSO_URI` | OIDC logout endpoint |
 | `IDENTITY_LOGOUT_REDIRECT_APP_URIS` | Allowed post-logout app redirect URIs |
 | `IDENTITY_LOGOUT_OIDC_REDIRECT_URIS` | Allowed `post_logout_redirect_uri` values sent to the IdP |
+
+Registration (`/register`) uses the OIDC client's service account to create users in Keycloak. The identity client needs the `manage-users` role on `realm-management`. Allowed `return_url` values default to `IDENTITY_LOGIN_REDIRECT_APP_URIS` (override with `IDENTITY_REGISTRATION_RETURN_URIS`). Disable with `IDENTITY_REGISTRATION_DISABLED=true`.
 
 Optional:
 
@@ -57,11 +60,11 @@ See `.env.default` for the full list including proxy routing rules.
 
 ## What identity needs to run
 
-sigma-identity is a stateless BFF except for **Redis sessions**. It does not store users or tokens in a database — the OIDC provider (Keycloak in dev) holds identity; Redis holds session cookies → tokens.
+sigma-identity is a stateless BFF except for **PostgreSQL sessions**. It does not store users in a database — the OIDC provider (Keycloak in dev) holds identity; PostgreSQL holds session cookies → tokens.
 
 | Dependency | Dev (host) | Dev (container) | Production |
 |------------|------------|-----------------|------------|
-| **Redis** | `./scripts/dev-stack.sh up` → `127.0.0.1:6379` | compose `redis` service | Memorystore / managed Redis |
+| **PostgreSQL** | [sigma-pg](https://github.com/sigmatactical-org/sigma-pg) via `./scripts/dev-stack.sh up` → `127.0.0.1:5432` | included from sigma-pg in devcontainer compose | Managed PostgreSQL / in-cluster Postgres |
 | **OIDC IdP** | Keycloak via dev-stack → `127.0.0.1:8101` | Keycloak in devcontainer | Keycloak (or other certified OP) |
 | **Backend to proxy** | Echo via dev-stack → `127.0.0.1:8088` | compose `echo` service | Your API services |
 | **sigma-theme** | `./scripts/prepare-local.sh` | same | baked into release image |
@@ -95,11 +98,11 @@ cp .env.default .env
 cargo run
 ```
 
-Keycloak, Redis, Traefik, and an echo backend are included in the compose stack. The OIDC client id in `dev_realm.json` is `identity`.
+Keycloak, PostgreSQL, Traefik, and an echo backend are included in the compose stack. The OIDC client id in `dev_realm.json` is `identity`.
 
-### Local (Rust only, bring your own Redis + IdP)
+### Local (Rust only, bring your own PostgreSQL + IdP)
 
-Requires Redis (`redis-server` on `127.0.0.1:6379`), an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
+Requires a running PostgreSQL from [sigma-pg](https://github.com/sigmatactical-org/sigma-pg), an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
 
 ```bash
 ./scripts/prepare-local.sh   # clone/link sigma-theme, build TS, patch cargo
@@ -109,10 +112,13 @@ cargo run
 
 ## Testing
 
-Unit tests (requires Redis):
+Unit tests require PostgreSQL (no in-memory or alternate backends):
 
 ```bash
-IDENTITY_TEST_REDIS_URL=redis://127.0.0.1:6379/ cargo test -- --test-threads=1
+# Clone sigma-pg next to identity, or set SIGMA_PG_DIR
+git clone https://github.com/sigmatactical-org/sigma-pg ../sigma-pg
+docker compose -f ../sigma-pg/docker-compose.deps.yml up -d
+TEST_DATABASE_URL=postgres://sigma:sigma@127.0.0.1:5432/sigma cargo test -- --test-threads=1
 ```
 
 Example app frontend — TypeScript in `ts/src/`, gitignored bundle at `files/exampleapp/sample.js`:
@@ -168,7 +174,7 @@ To stage and build the image locally:
 docker build -f Dockerfile build/image
 ```
 
-Local dev and E2E dependencies use Debian bookworm where possible (Redis, echo, Traefik). Keycloak is upstream UBI (dev-only).
+Local dev and E2E dependencies use Debian bookworm where possible (PostgreSQL, echo, Traefik). Keycloak is upstream UBI (dev-only).
 
 ## Upstream
 

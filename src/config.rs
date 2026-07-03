@@ -31,6 +31,12 @@ pub fn listen_port() -> String {
         .unwrap_or_else(|| String::from("3000"))
 }
 
+/// PostgreSQL connection URL for sessions and health checks.
+pub fn database_url() -> String {
+    var_optional("DATABASE_URL")
+        .unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string())
+}
+
 pub fn is_production() -> bool {
     matches!(
         var_optional("ENV")
@@ -116,4 +122,27 @@ pub fn logout_send_id_token_hint() -> bool {
         var_optional("LOGOUT_SEND_ID_TOKEN_HINT").as_deref(),
         Some("1") | Some("true") | Some("TRUE")
     )
+}
+
+/// When false, the self-service registration page is not mounted.
+pub fn registration_enabled() -> bool {
+    !conformance_mode()
+        && !matches!(
+            var_optional("REGISTRATION_DISABLED").as_deref(),
+            Some("1") | Some("true") | Some("TRUE")
+        )
+}
+
+/// Allowed `return_url` destinations for `/register` (comma-separated, exact or trailing `*`).
+pub fn registration_return_uris() -> Result<Vec<String>> {
+    let raw = if let Some(value) = var_optional("REGISTRATION_RETURN_URIS") {
+        value
+    } else {
+        var("LOGIN_REDIRECT_APP_URIS")?
+    };
+    Ok(raw
+        .split(',')
+        .map(|entry| entry.trim().to_string())
+        .filter(|entry| !entry.is_empty())
+        .collect())
 }

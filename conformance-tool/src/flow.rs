@@ -66,7 +66,19 @@ pub async fn ensure_identity_running(restart: bool) -> Result<()> {
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
+    dump_identity_debug().await;
     bail!("Identity did not become ready at {identity_url}");
+}
+
+async fn dump_identity_debug() {
+    let Some(cmd) = std::env::var("CONFORMANCE_IDENTITY_DEBUG_CMD").ok() else {
+        return;
+    };
+    let _ = Command::new("bash")
+        .arg("-lc")
+        .arg(&cmd)
+        .status()
+        .await;
 }
 
 pub async fn trigger_discover() -> Result<()> {

@@ -1,5 +1,11 @@
-# OpenID Foundation conformance suite (prebuilt) + sigma-identity RP under test.
+# sigma-identity RP harness under test.
 # Requires /etc/hosts: 127.0.0.1 localhost.emobix.co.uk keycloak.localhost
+#
+# PostgreSQL is started from sigma-pg/docker-compose.deps.yml by conformance-stack.sh
+# (not duplicated here). Identity reaches it via host.docker.internal:5432.
+#
+# The upstream OIDC conformance suite requires MongoDB, so it is not run here.
+# Set CONFORMANCE_SERVER to a hosted suite URL when running plans.
 
 name: sigma-identity-conformance
 
@@ -8,46 +14,6 @@ networks:
     name: sigma-identity-conformance
 
 services:
-  mongodb:
-    image: mongo:6.0.13
-    volumes:
-      - mongo-data:/data/db
-    networks:
-      - conformance-net
-
-  nginx:
-    image: registry.gitlab.com/openid/conformance-suite/nginx:latest
-    ports:
-      - "8443:8443"
-    depends_on:
-      - server
-    networks:
-      conformance-net:
-        aliases:
-          - localhost.emobix.co.uk
-
-  server:
-    image: registry.gitlab.com/openid/conformance-suite:latest
-    environment:
-      BASE_URL: https://localhost.emobix.co.uk:8443
-      MONGODB_HOST: mongodb
-      SPRING_PROFILES_ACTIVE: dev
-      OIDC_GOOGLE_CLIENTID: google-client
-      OIDC_GOOGLE_SECRET: google-secret
-      OIDC_GITLAB_CLIENTID: gitlab-client
-      OIDC_GITLAB_SECRET: gitlab-secret
-    depends_on:
-      - mongodb
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - conformance-net
-
-  redis:
-    image: redis:7-bookworm
-    networks:
-      - conformance-net
-
   echo:
     build:
       context: ..
@@ -56,16 +22,17 @@ services:
       - conformance-net
 
   identity:
-    image: mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+    image: mcr.microsoft.com/devcontainers/rust:2.0-bookworm
     environment:
-      IDENTITY_REDIS_URL: redis://redis:6379/
+      IDENTITY_DATABASE_URL: postgres://sigma:sigma@host.docker.internal:5432/sigma
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "localhost.emobix.co.uk:host-gateway"
     volumes:
       - ..:/workspace:cached
     command: /bin/sh -c "while sleep 1000; do :; done"
     networks:
       - conformance-net
-    extra_hosts:
-      - "localhost.emobix.co.uk:host-gateway"
 
   traefik:
     build:
@@ -86,6 +53,3 @@ services:
       conformance-net:
         aliases:
           - identity.localhost
-
-volumes:
-  mongo-data:

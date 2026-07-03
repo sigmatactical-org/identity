@@ -24,15 +24,16 @@ use tower_http::{
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
 };
-use tower_sessions::Session;
-use tower_sessions_redis_store::fred::clients::Pool;
+use tower_sessions::{Session, SessionManagerLayer, SessionStore, service::PrivateCookie};
+use sqlx::PgPool;
 use tracing::{debug, error, warn};
 
 use crate::{
-    auth::{AppConfigurationState, OIDCClient, SessionTokens, auth_routes},
+    auth::{AppConfigurationState, OIDCClient, SessionTokens, auth_routes, register_routes},
+    auth::{RegistrationAppSettings, KeycloakAdmin},
     config,
     monitoring::health_routes,
-    session::{IdentitySessionLayer, SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT},
+    session::{SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT},
     templates,
 };
 
@@ -217,8 +218,8 @@ async fn conformance_page() -> impl IntoResponse {
     }
 }
 
-fn api_proxy(
-    session_layer: &IdentitySessionLayer,
+fn api_proxy<S: SessionStore + Clone + 'static>(
+    session_layer: &SessionManagerLayer<S, PrivateCookie>,
     proxy_config: &ProxyConfig,
 ) -> anyhow::Result<Router> {
     proxy_config.extra_routes.iter().for_each(|er| {
@@ -395,32 +396,37 @@ fn security_headers(router: Router) -> Router {
     router
 }
 
-pub(crate) fn app(
+pub(crate) fn app<S: SessionStore + Clone + 'static>(
     oidc_client: OIDCClient,
-    session_layer: &IdentitySessionLayer,
+    session_layer: &SessionManagerLayer<S, PrivateCookie>,
     proxy_config: &ProxyConfig,
-    client: Pool,
+    pool: PgPool,
     remaining_secs_threshold: u64,
     app_config: AppConfigurationState,
+    registration_settings: Option<RegistrationAppSettings>,
+    keycloak_admin: Option<KeycloakAdmin>,
 ) -> Result<Router> {
     let files_root = config::files_dir();
     let files_root_path = Path::new(&files_root);
     let spa_apps = walk_dir(&files_root)?;
     let mut app = Router::new()
         .nest("/api", api_proxy(session_layer, proxy_config)?)
-        .nest("/app", health_routes(client.clone()))
+        .nest("/app", health_routes(pool.clone()))
         .nest(
             "/auth",
             auth_routes(
                 oidc_client,
                 session_layer,
-                client.clone(),
                 remaining_secs_threshold,
                 app_config,
             ),
         )
         .merge(sigma_theme::axum::router())
         .merge(themed_page_routes());
+
+    if let (Some(settings), Some(admin)) = (registration_settings, keycloak_admin) {
+        app = app.merge(register_routes(settings, admin));
+    }
 
     app = mount_themed_app_assets(app, files_root_path);
 

@@ -8,11 +8,11 @@ use tracing::{debug, warn};
 use crate::{
     auth::{
         AppConfigurationState, LoginAppSettings, LogoutAppSettings, LogoutBehavior, OIDCClient,
-        allowlist::UriAllowlist,
+        RegistrationAppSettings, KeycloakAdmin, allowlist::UriAllowlist,
     },
     config::validate_session_secret,
     http::{ProxyConfig, app},
-    session::redis_cons,
+    session::{postgres_pool, session_store},
 };
 
 mod auth;
@@ -85,9 +85,10 @@ fn init_session_vars() -> anyhow::Result<SessionSetup> {
 }
 
 pub async fn run() -> anyhow::Result<()> {
-    let connection_url = crate::config::var("REDIS_URL")?;
-    let (store, client) = redis_cons(&connection_url).await?;
     let session_setup = init_session_vars()?;
+    let database_url = config::database_url();
+    let pool = postgres_pool(&database_url).await?;
+    let store = session_store(pool.clone()).await?;
     let session_layer = session_setup.get_session_layer(store)?;
     let client_id = oidc_client_from_env()?;
     let oidc_client = init_oidc_client(&client_id).await?;
@@ -141,13 +142,26 @@ pub async fn run() -> anyhow::Result<()> {
         },
     };
 
+    let registration_settings = if config::registration_enabled() {
+        Some(RegistrationAppSettings::new(config::registration_return_uris()?))
+    } else {
+        None
+    };
+    let keycloak_admin = if registration_settings.is_some() {
+        Some(KeycloakAdmin::from_env()?)
+    } else {
+        None
+    };
+
     let app = app(
         oidc_client,
         &session_layer,
         &proxy_config,
-        client,
+        pool,
         remaining_secs_threshold,
         app_config,
+        registration_settings,
+        keycloak_admin,
     );
 
     let listener = http::port_listener().await?;

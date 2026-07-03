@@ -8,7 +8,6 @@ use axum_macros::debug_handler;
 use oauth2::reqwest::Url;
 use serde::Deserialize;
 use tower_sessions::Session;
-use tower_sessions_redis_store::fred::clients::Pool;
 use tracing::{error, info};
 
 use crate::{
@@ -38,11 +37,10 @@ pub(crate) struct TokenExchangeData {
 
 pub(super) async fn callback_post_token_exchange(
     session: &Session,
-    pool: Pool,
     jwt: SessionTokens,
     userid: String,
 ) {
-    purge_store_and_regenerate_session(session, pool.next()).await;
+    purge_store_and_regenerate_session(session).await;
 
     let _ = session.insert(SESSION_KEY_JWT, jwt).await;
     let _ = session
@@ -54,15 +52,14 @@ pub(super) async fn callback_post_token_exchange(
 #[debug_handler]
 pub(crate) async fn callback(
     Extension(oidc_client): Extension<OIDCClient>,
-    Extension(client): Extension<Pool>,
     session: Session,
     callback_query_params: Query<CallbackQueryParams>,
 ) -> Result<Response, Response> {
     let login_callback_session_params = session
         .get::<LoginCallbackSessionParameters>(SESSION_KEY_LOGIN_CALLBACK)
         .await
-        .map_err(|redis_err| {
-            error!("Reading redis error in callback: {:?}", redis_err);
+        .map_err(|session_err| {
+            error!("Reading session error in callback: {:?}", session_err);
             (StatusCode::INTERNAL_SERVER_ERROR, "Invalid session").into_response()
         })?
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid session").into_response())?;
@@ -104,7 +101,7 @@ pub(crate) async fn callback(
             (StatusCode::UNAUTHORIZED, "Login failure").into_response()
         })?;
 
-    callback_post_token_exchange(&session, client, jwt, userid).await;
+    callback_post_token_exchange(&session, jwt, userid).await;
 
     Ok(Redirect::to(&login_callback_session_params.app_uri).into_response())
 }

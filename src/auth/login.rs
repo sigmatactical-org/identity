@@ -8,7 +8,6 @@ use axum::{
 use axum_macros::debug_handler;
 use serde::Deserialize;
 use tower_sessions::Session;
-use tower_sessions_redis_store::fred::clients::Pool;
 use tracing::{debug, error, trace};
 
 use crate::{
@@ -66,7 +65,6 @@ impl LoginAppSettings {
 pub(crate) async fn login(
     State(login_app_settings): State<LoginAppSettings>,
     Extension(oidc_client): Extension<OIDCClient>,
-    Extension(client): Extension<Pool>,
     session: Session,
     login_query_params: Query<LoginQueryParams>,
 ) -> Result<Response, Response> {
@@ -81,7 +79,7 @@ pub(crate) async fn login(
         );
         return Err((StatusCode::BAD_REQUEST, "Invalid redirect_uri").into_response());
     }
-    purge_store_and_regenerate_session(&session, client.next()).await;
+    purge_store_and_regenerate_session(&session).await;
     let state: String = random_alphanumeric_string(20);
     let d = oidc_client
         .authorize_data(AuthorizeRequestData {

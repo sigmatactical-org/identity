@@ -6,12 +6,15 @@ Automated [OpenID Foundation conformance suite](https://gitlab.com/openid/confor
 
 - Docker Compose v2
 - Rust toolchain (builds `sigma-conformance` and `sigma-identity`)
-- `/etc/hosts`: `127.0.0.1 localhost.emobix.co.uk`
+- PostgreSQL from [sigma-pg](https://github.com/sigmatactical-org/sigma-pg) (started by `conformance-stack.sh up`)
+- Hosted OIDC conformance suite URL — set `CONFORMANCE_SERVER` (e.g. [certification.openid.net](https://www.certification.openid.net/)). Sigma does not run the vendor suite locally (it requires MongoDB).
+- `/etc/hosts`: `127.0.0.1 localhost.emobix.co.uk` (when using a local suite hostname)
 - Built theme (`./scripts/prepare-local.sh`)
 
 ## Quick start
 
 ```bash
+export CONFORMANCE_SERVER=https://your-hosted-suite.example   # required
 ./scripts/conformance-stack.sh up
 ./scripts/conformance-stack.sh wait-suite
 ./scripts/conformance-stack.sh build
@@ -20,16 +23,14 @@ Automated [OpenID Foundation conformance suite](https://gitlab.com/openid/confor
 
 `test-smoke` starts a suite module (fake OP), waits for `WAITING`, then starts identity and runs the module. Bootstrap is optional (records plan metadata only).
 
-Suite UI: [https://localhost.emobix.co.uk:8443](https://localhost.emobix.co.uk:8443)  
+Suite UI: your hosted `CONFORMANCE_SERVER` URL  
 RP harness UI: [https://localhost:3000/conformance/](https://localhost:3000/conformance/)
-
-## Plans
 
 ## Plans
 
 | Plan | Config | Notes |
 |------|--------|-------|
-| `oidcc-client-test-plan` | `config/oidcc-client-test.json` | Development plan (29 modules; CI on `main` push) |
+| `oidcc-client-test-plan` | `config/oidcc-client-test.json` | Development plan (29 modules) |
 | `oidcc-client-basic-certification-test-plan` | `config/oidcc-client-basic.json` | Basic RP certification (14 modules; `client_secret_basic`) |
 | `oidcc-client-refreshtoken-test-plan` | `config/oidcc-client-refreshtoken.json` | Refresh token (`form_post`, 3 modules) |
 | `oidcc-rp-initiated-logout-certification-test-plan` | `config/oidcc-rp-initiated-logout.json` | RP-initiated logout (11 modules; needs browser OP confirm — see below) |
@@ -61,13 +62,7 @@ Copy [`.env.conformance-ci`](../.env.conformance-ci) — key variables:
 
 ## CI
 
-`.github/workflows/conformance.yml`:
-
-- **Push to `main`** (conformance-related paths): full `oidcc-client-test-plan`
-- **Weekly schedule**: all plans in `plans.json`
-- **Manual dispatch**: optional `plan` input (plan name or `all`)
-
-Settle/gap env vars in the workflow: `CONFORMANCE_MODULE_SETTLE=20`, `CONFORMANCE_MODULE_GAP=25`, `CONFORMANCE_MODULE_TIMEOUT=360`.
+Manual workflow only (`.github/workflows/conformance.yml`): provide a hosted `conformance_server` URL. Sigma runs PostgreSQL for identity sessions; the vendor conformance suite is not started in CI.
 
 ### Local pass status (automated curl runner)
 
@@ -90,7 +85,7 @@ Bootstrap **must not** run identity before a test module: the fake OP exists onl
 
 ## BFF caveats
 
-sigma-identity is a BFF (custom `/auth/login`, allowlists, Redis sessions), not a minimal OIDC client library demo. The runner drives flows via curl against `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/conformance/discover`. Formal hosted certification uses [certification.openid.net](https://www.certification.openid.net/).
+sigma-identity is a BFF (custom `/auth/login`, allowlists, PostgreSQL sessions), not a minimal OIDC client library demo. The runner drives flows via curl against `/auth/login`, `/auth/refresh`, `/auth/logout`, and `/auth/conformance/discover`. The vendor conformance suite is hosted externally (Sigma uses PostgreSQL only). Formal certification uses [certification.openid.net](https://www.certification.openid.net/).
 
 ## Results
 

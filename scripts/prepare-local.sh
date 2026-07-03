@@ -20,6 +20,7 @@ if [[ -n "$THEME_HELPER" ]]; then
   prepare_sigma_theme "$ROOT"
   write_theme_patch_files "$ROOT"
   write_askama_config "$ROOT"
+  write_sigma_pg_patch "$ROOT"
   build_theme_ts "$ROOT"
 else
   THEME_PATH="theme"

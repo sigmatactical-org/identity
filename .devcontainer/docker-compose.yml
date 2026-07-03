@@ -1,18 +1,18 @@
+include:
+  - path: ../../sigma-pg/docker-compose.deps.yml
+
 services:
   identity:
-    image: mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+    image: mcr.microsoft.com/devcontainers/rust:2.0-bookworm
     environment:
       # Compose network hostname; overrides .env when running inside the devcontainer.
-      - IDENTITY_REDIS_URL=redis://redis:6379/
+      - IDENTITY_DATABASE_URL=postgres://sigma:sigma@postgres:5432/sigma
     ports:
       - "8101:8101"
       - "3000:3000"
     volumes:
       - ..:/workspace:cached
     command: /bin/sh -c "while sleep 1000; do :; done"
-
-  redis:
-    image: redis:7-bookworm
 
   echo:
     build:
@@ -30,5 +30,13 @@ services:
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
       - KC_HTTP_PORT=8101
+      - KC_DB=postgres
+      - KC_DB_URL_HOST=postgres
+      - KC_DB_URL_DATABASE=keycloak
+      - KC_DB_USERNAME=sigma
+      - KC_DB_PASSWORD=sigma
     volumes:
       - ../dev_realm.json:/opt/keycloak/data/import/dev_realm.json
+    depends_on:
+      postgres:
+        condition: service_healthy

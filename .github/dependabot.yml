@@ -14,7 +14,7 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     ignore:
-      # tower-sessions-redis-store 0.16 implements SessionStore for tower-sessions 0.14 only.
+      # tower-sessions-sqlx-store 0.15 implements SessionStore for tower-sessions 0.14.
       - dependency-name: tower-sessions
         versions: [">=0.15.0"]
       # rand 0.10 breaks sample_iter / Rng usage in src/auth/mod.rs.

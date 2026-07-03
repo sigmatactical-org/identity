@@ -2,11 +2,12 @@ use time::Duration;
 
 use anyhow::{Context, Result};
 use cookie::Key;
-use tower_sessions::{Expiry, Session, SessionManagerLayer, service::PrivateCookie};
-use tower_sessions_redis_store::{RedisStore, fred::prelude::*};
+use sqlx::PgPool;
+use tower_sessions::{
+    Expiry, Session, SessionManagerLayer, SessionStore, service::PrivateCookie,
+};
+use tower_sessions_sqlx_store::PostgresStore;
 use tracing::debug;
-
-pub(crate) type IdentitySessionLayer = SessionManagerLayer<RedisStore<Pool>, PrivateCookie>;
 
 pub(crate) static SESSION_KEY_CSRF_TOKEN: &str = "identity_csrf_token";
 pub(crate) static SESSION_KEY_JWT: &str = "identity_jwt";
@@ -53,10 +54,10 @@ pub(crate) struct SessionSetup {
 }
 
 impl SessionSetup {
-    pub(crate) fn get_session_layer(
+    pub(crate) fn get_session_layer<Store: SessionStore>(
         &self,
-        store: RedisStore<Pool>,
-    ) -> Result<IdentitySessionLayer> {
+        store: Store,
+    ) -> Result<SessionManagerLayer<Store, PrivateCookie>> {
         debug!("Preparing session");
         let session_layer = SessionManagerLayer::new(store)
             .with_private(Key::from(self.secret.as_bytes()))
@@ -72,35 +73,25 @@ impl SessionSetup {
     }
 }
 
-pub(crate) async fn redis_cons(connection_url: &str) -> Result<(RedisStore<Pool>, Pool)> {
-    debug!("Establishing redis session connection to {connection_url}");
-
-    let pool = Pool::new(
-        Config::from_url(connection_url).context("Invalid redis connection url")?,
-        Some(PerformanceConfig {
-            default_command_timeout: core::time::Duration::from_millis(300),
-            ..Default::default()
-        }),
-        None,
-        Some(ReconnectPolicy::new_constant(0, 5_000)),
-        6,
-    )
-    .context("Redis setup")?;
-    let _redis_conn = pool.connect();
-    pool.wait_for_connect()
+pub(crate) async fn postgres_pool(connection_url: &str) -> Result<PgPool> {
+    debug!("Establishing PostgreSQL session connection");
+    let pool = PgPool::connect(connection_url)
         .await
-        .context("Initial connection attempt to redis")?;
-
-    let session_store = RedisStore::new(pool.clone());
-    Ok((session_store, pool))
+        .with_context(|| format!("connect to PostgreSQL at {connection_url}"))?;
+    Ok(pool)
 }
 
-/// Remove the data associated with the session identifier from the store and create a new session.
-pub(crate) async fn purge_store_and_regenerate_session(session: &Session, client: &Client) {
-    if let Some(key) = session.id() {
-        let key = key.to_string();
-        let _: Result<(), _> = client.del::<_, String>(key).await;
-    }
+pub(crate) async fn session_store(pool: PgPool) -> Result<PostgresStore> {
+    let store = PostgresStore::new(pool);
+    store
+        .migrate()
+        .await
+        .context("migrate tower_sessions tables")?;
+    Ok(store)
+}
+
+/// Remove session data and start a fresh session identifier.
+pub(crate) async fn purge_store_and_regenerate_session(session: &Session) {
     let _: Result<(), _> = session.flush().await;
     let _ = session.save().await;
 }

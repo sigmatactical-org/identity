@@ -8,7 +8,6 @@ use axum::{
 use axum_macros::debug_handler;
 use serde::Serialize;
 use tower_sessions::Session;
-use tower_sessions_redis_store::fred::clients::Pool;
 
 use crate::auth::{LoginCallbackSessionParameters, OIDCClient};
 use crate::session::SESSION_KEY_LOGIN_CALLBACK;
@@ -44,7 +43,6 @@ pub(crate) async fn discover(Extension(oidc): Extension<OIDCClient>) -> impl Int
 #[debug_handler]
 pub(crate) async fn callback_form_post(
     Extension(oidc_client): Extension<OIDCClient>,
-    Extension(client): Extension<Pool>,
     session: Session,
     axum::Form(params): axum::Form<CallbackQueryParams>,
 ) -> Result<Response, Response> {
@@ -77,6 +75,7 @@ pub(crate) async fn callback_form_post(
         .await
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Login failure").into_response())?;
 
-    callback_post_token_exchange(&session, client, jwt, userid).await;
+    callback_post_token_exchange(&session, jwt, userid).await;
+
     Ok(Redirect::to(&login_callback_session_params.app_uri).into_response())
 }

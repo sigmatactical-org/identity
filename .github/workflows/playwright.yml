@@ -31,6 +31,15 @@ jobs:
       - name: Prepare build
         run: ./scripts/prepare-local.sh
 
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build identity (host)
+        run: cargo build --release -p sigma-identity
+
       - name: Start E2E stack
         run: ./scripts/e2e-stack.sh up
 

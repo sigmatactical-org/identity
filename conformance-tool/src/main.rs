@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
                 'pkill -x sigma-identity 2>/dev/null || true; \
                 for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x sigma-identity >/dev/null || break; sleep 1; done; \
                 cd /workspace && cp .env.conformance-run .env 2>/dev/null || cp .env.conformance-ci .env; \
-                nohup ./target/release/sigma-identity >/tmp/sigma-identity.log 2>&1 &'"
+                ./target/release/sigma-identity >>/tmp/sigma-identity.log 2>&1'"
                     .into()
             }),
         );

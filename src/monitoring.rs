@@ -4,25 +4,22 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use tower_sessions_redis_store::fred::{clients::Pool, interfaces::ClientLike};
+use sqlx::PgPool;
 use tracing::error;
 
-async fn health_check(Extension(pool): Extension<Pool>) -> Response {
-    let client = pool.next_connected();
-    let con: Result<(), _> = client.ping(None).await;
-
-    if let Err(err) = con {
-        error!("Failed to connect to redis: {:?}", err);
+async fn health_check(Extension(pool): Extension<PgPool>) -> Response {
+    if let Err(err) = sigma_pg::ping(&pool).await {
+        error!("Failed to connect to PostgreSQL: {err:?}");
         return (StatusCode::SERVICE_UNAVAILABLE, "Unhealthy").into_response();
     }
 
     (StatusCode::OK, "OK").into_response()
 }
 
-pub(crate) fn health_routes(client: Pool) -> Router {
+pub(crate) fn health_routes(pool: PgPool) -> Router {
     Router::new()
         .route("/up", get(|| async { "up" }))
-        .route("/health", get(health_check).layer(Extension(client)))
+        .route("/health", get(health_check).layer(Extension(pool)))
 }
 
 #[cfg(test)]
@@ -32,45 +29,22 @@ mod tests {
         http::{Request, StatusCode},
     };
     use http_body_util::BodyExt;
-    use tokio::time::timeout;
     use tower::ServiceExt;
-    use tower_sessions_redis_store::fred::prelude::*;
 
     use super::*;
 
-    async fn redis_client(connection_url: &str) -> Pool {
-        let conf = Config::from_url(connection_url).expect("Parsing redis connection url");
-        let redis_pool = Pool::new(
-            conf,
-            Some(PerformanceConfig {
-                default_command_timeout: core::time::Duration::from_millis(300),
-
-                ..Default::default()
-            }),
-            None,
-            Some(ReconnectPolicy::new_constant(0, 5_000)),
-            6,
-        )
-        .expect("Redis setup");
-
-        let connect_pool = redis_pool.clone();
-
-        if (timeout(core::time::Duration::from_secs(1), connect_pool.connect()).await).is_err() {
-            tracing::warn!("Failed to connect to redis");
-        }
-
-        redis_pool
+    async fn test_pool() -> PgPool {
+        let url = crate::config::var_optional("TEST_DATABASE_URL")
+            .unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string());
+        sigma_pg::connect_url(&url)
+            .await
+            .expect("PostgreSQL required for tests")
     }
 
     #[tokio::test]
     async fn test_up() {
-        let client = redis_client(
-            crate::config::var_optional("TEST_REDIS_URL")
-                .unwrap_or_else(|| "redis://127.0.0.1:6379/".to_string())
-                .as_ref(),
-        )
-        .await;
-        let app = health_routes(client);
+        let pool = test_pool().await;
+        let app = health_routes(pool);
 
         let response = app
             .oneshot(Request::builder().uri("/up").body(Body::empty()).unwrap())
@@ -91,14 +65,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_health() {
-        let client = redis_client(
-            crate::config::var_optional("TEST_REDIS_URL")
-                .unwrap_or_else(|| "redis://127.0.0.1:6379/".to_string())
-                .as_ref(),
-        )
-        .await;
-        // let _ = pool.connect();
-        let app = health_routes(client);
+        let pool = test_pool().await;
+        let app = health_routes(pool);
 
         let response = app
             .oneshot(
@@ -124,40 +92,5 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK, "Expected 200 OK, but {body}");
         assert_eq!(body, "OK");
-    }
-
-    #[tokio::test]
-    async fn test_health_checks_redis() {
-        let client = redis_client("redis://redis-wrong-host:6379").await;
-        let app = health_routes(client);
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let status = response.status();
-        let body = String::from_utf8(
-            response
-                .into_body()
-                .collect()
-                .await
-                .expect("collect")
-                .to_bytes()
-                .to_vec(),
-        )
-        .unwrap();
-        assert_eq!(
-            status,
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Expected 503, but {body}"
-        );
-
-        assert_eq!(body, "Unhealthy");
     }
 }

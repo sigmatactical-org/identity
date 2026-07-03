@@ -2,10 +2,12 @@ pub mod allowlist;
 mod callback;
 mod conformance;
 mod csrftoken;
+mod keycloak_admin;
 mod login;
 mod logout;
 mod oidcclient;
 mod refresh;
+mod register;
 mod status;
 
 use std::time::SystemTime;
@@ -14,6 +16,9 @@ pub use login::LoginAppSettings;
 pub use logout::LogoutAppSettings;
 pub use logout::LogoutBehavior;
 pub use oidcclient::OIDCClient;
+pub use register::RegistrationAppSettings;
+
+pub(crate) use keycloak_admin::KeycloakAdmin;
 
 use axum::{
     Extension, Router,
@@ -26,17 +31,16 @@ use openidconnect::{
 };
 use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
-use tower_sessions_redis_store::fred::clients::Pool;
 
-use crate::session::IdentitySessionLayer;
+use tower_sessions::{SessionManagerLayer, SessionStore, service::PrivateCookie};
 
-use self::logout::logout_callback;
 use self::{
     callback::callback,
     csrftoken::csrftoken,
     login::login,
-    logout::logout,
+    logout::{logout, logout_callback},
     refresh::{RefreshLockManager, refresh},
+    register::{register_form, register_submit},
     status::status,
 };
 
@@ -138,10 +142,9 @@ impl FromRef<AppConfigurationState> for LogoutAppSettings {
     }
 }
 
-pub(crate) fn auth_routes(
+pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
     oidc_client: OIDCClient,
-    session_layer: &IdentitySessionLayer,
-    client: Pool,
+    session_layer: &SessionManagerLayer<S, PrivateCookie>,
     remaining_secs_threshold: u64,
     app_config: AppConfigurationState,
 ) -> Router {
@@ -157,16 +160,14 @@ pub(crate) fn auth_routes(
             "/login",
             get(login).layer(
                 ServiceBuilder::new()
-                    .layer(Extension(oidc_client.clone()))
-                    .layer(Extension(client.clone())),
+                    .layer(Extension(oidc_client.clone())),
             ),
         )
         .route(
             "/callback",
             callback_route.layer(
                 ServiceBuilder::new()
-                    .layer(Extension(oidc_client.clone()))
-                    .layer(Extension(client.clone())),
+                    .layer(Extension(oidc_client.clone())),
             ),
         )
         .route(
@@ -192,6 +193,20 @@ pub(crate) fn auth_routes(
     }
 
     router
+}
+
+pub(crate) fn register_routes(
+    registration_settings: RegistrationAppSettings,
+    keycloak_admin: KeycloakAdmin,
+) -> Router {
+    Router::new()
+        .route(
+            "/register",
+            get(register_form)
+                .post(register_submit)
+                .layer(Extension(keycloak_admin)),
+        )
+        .with_state(registration_settings)
 }
 
 pub(crate) fn random_alphanumeric_string(length: usize) -> String {
@@ -227,7 +242,6 @@ mod tests {
     };
     use serde_json::json;
     use tower::{Service, ServiceExt};
-    use tower_sessions_redis_store::fred::clients::Pool;
     use tracing_log::LogTracer;
     use tracing_subscriber::filter::EnvFilter;
     use wiremock::{
@@ -235,7 +249,11 @@ mod tests {
         matchers::{method, path},
     };
 
-    use crate::session::{IdentitySessionLayer, SessionSetup, redis_cons};
+    use tower_sessions::{SessionManagerLayer, service::PrivateCookie};
+
+    use tower_sessions_sqlx_store::PostgresStore;
+
+    use crate::session::{SessionSetup, postgres_pool, session_store};
 
     use super::allowlist::UriAllowlist;
     use super::{
@@ -441,8 +459,7 @@ mod tests {
         issuer_url: String,
         mock_server: MockServer,
         oidc_client: OIDCClient,
-        redis_pool: Pool,
-        session_layer: IdentitySessionLayer,
+        session_layer: SessionManagerLayer<PostgresStore, PrivateCookie>,
     }
 
     impl MockSetup {
@@ -475,13 +492,14 @@ mod tests {
                     .expect("OIDCClient creation failed");
 
             let session_secret: String = random_alphanumeric_string(64);
-            let (session_store, redis_pool) = redis_cons(
-                crate::config::var_optional("TEST_REDIS_URL")
-                    .unwrap_or_else(|| "redis://127.0.0.1:6379/".to_string())
-                    .as_ref(),
-            )
-            .await
-            .expect("Redis setup failed");
+            let database_url = crate::config::var_optional("TEST_DATABASE_URL")
+                .unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string());
+            let pg_pool = postgres_pool(&database_url)
+                .await
+                .expect("PostgreSQL required for tests");
+            let session_store = session_store(pg_pool)
+                .await
+                .expect("session store migration failed");
             let session_setup = SessionSetup {
                 secret: session_secret.clone(),
                 cookie_name: cookie_name.clone(),
@@ -499,14 +517,12 @@ mod tests {
                 client_id,
                 issuer_url,
                 mock_server,
-                redis_pool,
                 oidc_client,
                 session_layer,
             }
         }
 
         pub fn router(&self) -> Router {
-            let redis_pool = self.redis_pool.clone();
             let app_config = AppConfigurationState {
                 login_app_settings: LoginAppSettings::new(
                     vec![
@@ -533,7 +549,6 @@ mod tests {
                 auth_routes(
                     self.oidc_client.clone(),
                     &self.session_layer,
-                    redis_pool,
                     20,
                     app_config,
                 ),

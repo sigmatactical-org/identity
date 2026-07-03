@@ -411,6 +411,9 @@
     "disableableCredentialTypes" : [ ],
     "requiredActions" : [ ],
     "realmRoles" : [ "default-roles-multcorp" ],
+    "clientRoles" : {
+      "realm-management" : [ "manage-users" ]
+    },
     "notBefore" : 0,
     "groups" : [ ]
   }, {
