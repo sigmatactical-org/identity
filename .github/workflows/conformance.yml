@@ -8,10 +8,12 @@ on:
       - "conformance/**"
       - "conformance-tool/**"
       - "echo/**"
+      - ".devcontainer/echo/**"
       - "scripts/conformance-stack.sh"
       - ".env.conformance-ci"
       - "Cargo.toml"
       - "Cargo.lock"
+      - ".github/workflows/conformance.yml"
   workflow_dispatch:
     inputs:
       plan:
