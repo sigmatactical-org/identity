@@ -40,7 +40,7 @@ use self::{
     login::login,
     logout::{logout, logout_callback},
     refresh::{RefreshLockManager, refresh},
-    register::{register_form, register_submit},
+    register::{register_form, register_submit, register_success},
     status::status,
 };
 
@@ -198,8 +198,9 @@ pub(crate) fn register_routes(
             "/register",
             get(register_form)
                 .post(register_submit)
-                .layer(Extension(keycloak_admin)),
+                .layer(Extension(keycloak_admin.clone())),
         )
+        .route("/register/success", get(register_success))
         .with_state(registration_settings)
 }
 
@@ -481,7 +482,15 @@ mod tests {
                 .await;
             let auth_url = format!("{}/authorize", mock_server.uri());
             let oidc_client =
-                OIDCClient::build(&issuer_url, &client_id, &client_secret, Some(auth_url))
+                OIDCClient::build(
+                    &issuer_url,
+                    &client_id,
+                    &client_secret,
+                    Some(auth_url),
+                    None,
+                    None,
+                    None,
+                )
                     .await
                     .expect("OIDCClient creation failed");
 

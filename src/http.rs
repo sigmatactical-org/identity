@@ -182,10 +182,26 @@ fn themed_page_routes() -> Router {
 }
 
 fn mount_themed_app_assets(mut app: Router, files_root: &Path) -> Router {
-    let exampleapp_dir = files_root.join("exampleapp");
-    if exampleapp_dir.is_dir() {
-        debug!("Serving themed app assets from {exampleapp_dir:?}");
-        app = app.nest_service("/exampleapp", ServeDir::new(exampleapp_dir));
+    for app_name in THEMED_INDEX_APPS {
+        let app_dir = files_root.join(app_name);
+        if !app_dir.is_dir() {
+            continue;
+        }
+        debug!("Serving themed app assets from {app_dir:?}");
+        let Ok(entries) = std::fs::read_dir(&app_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(filename) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let route = format!("/{app_name}/{filename}");
+            app = app.route_service(&route, ServeFile::new(path));
+        }
     }
     app
 }
@@ -358,9 +374,17 @@ async fn proxy(
 }
 
 fn security_headers(router: Router) -> Router {
-    const CSP: &str = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; \
-        img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; \
-        connect-src 'self'; form-action 'self'; upgrade-insecure-requests";
+    let csp = if config::is_production() {
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; \
+         img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; \
+         connect-src 'self'; form-action 'self'; upgrade-insecure-requests"
+    } else {
+        // Dev/staging serves plain HTTP (kind NodePort, local docker). upgrade-insecure-requests
+        // would make browsers load CSS/JS over HTTPS and leave pages unstyled.
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; \
+         img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; \
+         connect-src 'self'; form-action 'self'"
+    };
 
     let mut router = router
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -377,7 +401,7 @@ fn security_headers(router: Router) -> Router {
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("content-security-policy"),
-            HeaderValue::from_static(CSP),
+            HeaderValue::from_static(csp),
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),

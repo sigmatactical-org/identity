@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Account created — Sigma Tactical Group{% endblock %}
+
+{% block main_class %}app-main{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="register-card register-success-card">
+    <div class="register-success-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    </div>
+    <h1>Account created</h1>
+    <p class="lead">Your account was registered successfully.</p>
+
+    {% if redirect_url != "" %}
+    <p class="register-success-countdown" id="register-success-countdown">
+      Redirecting in <span id="register-success-seconds">{{ redirect_delay_secs }}</span> seconds…
+    </p>
+    <p class="mb-0">
+      <a class="btn btn-primary" href="{{ redirect_url }}">Continue now</a>
+    </p>
+    <div
+      id="register-success-redirect"
+      data-redirect-url="{{ redirect_url }}"
+      data-redirect-delay="{{ redirect_delay_secs }}"
+      hidden
+    ></div>
+    {% else %}
+    <p class="text-secondary mb-0">You can close this page.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if redirect_url != "" %}
+<script src="/static/js/register-success.js" defer></script>
+{% endif %}
+{% endblock %}

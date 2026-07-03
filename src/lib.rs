@@ -56,7 +56,16 @@ async fn init_oidc_client(client_id: &str) -> anyhow::Result<OIDCClient> {
     let issuer_url = crate::config::var("OIDC_ISSUER_URL")?;
     let client_secret = crate::config::var("OIDC_CLIENT_SECRET")?;
     let auth_url = crate::config::var_optional("OIDC_AUTH_URL");
-    OIDCClient::build(&issuer_url, client_id, &client_secret, auth_url).await
+    OIDCClient::build(
+        &issuer_url,
+        client_id,
+        &client_secret,
+        auth_url,
+        crate::config::oidc_discovery_issuer_url(),
+        crate::config::oidc_token_endpoint(),
+        crate::config::oidc_jwks_uri(),
+    )
+    .await
 }
 
 fn init_session_vars() -> anyhow::Result<SessionSetup> {

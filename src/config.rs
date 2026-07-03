@@ -85,6 +85,22 @@ pub fn conformance_mode() -> bool {
     )
 }
 
+/// When set, discover OIDC metadata from this issuer URL (cluster-internal) instead of
+/// `IDENTITY_OIDC_ISSUER_URL` (public hostname browsers and ID tokens use).
+pub fn oidc_discovery_issuer_url() -> Option<String> {
+    var_optional("OIDC_DISCOVERY_ISSUER_URL")
+}
+
+/// When set, override the token endpoint from discovery (cluster-internal backchannel).
+pub fn oidc_token_endpoint() -> Option<String> {
+    var_optional("OIDC_TOKEN_ENDPOINT")
+}
+
+/// When set, override the JWKS URI from discovery (cluster-internal backchannel).
+pub fn oidc_jwks_uri() -> Option<String> {
+    var_optional("OIDC_JWKS_URI")
+}
+
 /// When set: `client_secret_basic` or `client_secret_post` for token endpoint auth.
 pub fn oidc_token_endpoint_auth_method() -> Option<String> {
     var_optional("OIDC_TOKEN_ENDPOINT_AUTH_METHOD").map(|v| v.trim().to_ascii_lowercase())

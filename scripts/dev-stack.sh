@@ -15,21 +15,45 @@ KEYCLOAK_URL="${KEYCLOAK_URL:-http://127.0.0.1:8101/realms/multcorp}"
 DATABASE_URL="${DATABASE_URL:-postgres://sigma:sigma@127.0.0.1:5432/sigma}"
 ECHO_URL="${ECHO_URL:-http://127.0.0.1:8088/}"
 
-postgres_on_host() {
-  if command -v pg_isready >/dev/null 2>&1; then
-    pg_isready -h 127.0.0.1 -p 5432 -U sigma -d sigma >/dev/null 2>&1 && return 0
+postgres_sigma_ready() {
+  if ! command -v psql >/dev/null 2>&1; then
+    return 1
   fi
+  for port in 5432 5433; do
+    if PGPASSWORD=sigma psql -h 127.0.0.1 -p "$port" -U sigma -d sigma -c 'select 1' >/dev/null 2>&1; then
+      return 0
+    fi
+  done
   return 1
+}
+
+sigma_pg_container_running() {
+  docker inspect sigma-pg-postgres >/dev/null 2>&1 \
+    && [[ "$(docker inspect sigma-pg-postgres --format '{{.State.Running}}')" == "true" ]]
+}
+
+ensure_sigma_dev_network() {
+  docker network create sigma-dev >/dev/null 2>&1 || true
+  if sigma_pg_container_running; then
+    if ! docker inspect sigma-pg-postgres --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' \
+      | grep -qw sigma-dev; then
+      docker network connect sigma-dev sigma-pg-postgres >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 cmd="${1:-}"
 case "$cmd" in
   up)
-    if postgres_on_host; then
-      echo "PostgreSQL already listening on 127.0.0.1:5432"
+    ensure_sigma_dev_network
+    if postgres_sigma_ready; then
+      echo "PostgreSQL (sigma) ready on host"
+    elif sigma_pg_container_running; then
+      echo "Using existing sigma-pg-postgres container"
     else
       echo "Starting PostgreSQL from sigma-pg..."
       (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" up -d)
+      ensure_sigma_dev_network
     fi
     "${DEPS_COMPOSE[@]}" up -d --build
     ;;
@@ -38,8 +62,8 @@ case "$cmd" in
     (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" down) || true
     ;;
   wait)
-    if postgres_on_host; then
-      echo "PostgreSQL ready (host)"
+    if postgres_sigma_ready; then
+      echo "PostgreSQL ready (sigma@127.0.0.1:5432)"
     else
       echo "Waiting for PostgreSQL..."
       for _ in $(seq 1 30); do
@@ -77,6 +101,14 @@ case "$cmd" in
     ;;
   env)
     cp "$ROOT/.env.host" "$ROOT/.env"
+    if command -v psql >/dev/null 2>&1; then
+      for port in 5432 5433; do
+        if PGPASSWORD=sigma psql -h 127.0.0.1 -p "$port" -U sigma -d sigma -c 'select 1' >/dev/null 2>&1; then
+          sed -i "s|@127.0.0.1:543[23]/sigma|@127.0.0.1:${port}/sigma|" "$ROOT/.env"
+          break
+        fi
+      done
+    fi
     echo "Wrote $ROOT/.env from .env.host"
     ;;
   logs)

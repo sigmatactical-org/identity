@@ -4,27 +4,6 @@
 
 {% block main_class %}app-main{% endblock %}
 
-{% block extra_head %}
-<style>
-  .register-card {
-    max-width: 32rem;
-    margin: 0 auto;
-    padding: 1.5rem;
-    border-radius: 0.75rem;
-    background: rgba(15, 20, 26, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-  .register-card h1 {
-    font-size: 1.5rem;
-    margin-bottom: 0.25rem;
-  }
-  .register-card .lead {
-    color: rgba(255, 255, 255, 0.72);
-    margin-bottom: 1.25rem;
-  }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="container">
   <div class="register-card">
@@ -91,32 +70,60 @@
 
       <div class="mb-3">
         <label for="password" class="form-label">Password</label>
-        <input
-          class="form-control"
-          type="password"
-          id="password"
-          name="password"
-          autocomplete="new-password"
-          minlength="8"
-          required
-        />
+        <div class="password-toggle-group">
+          <input
+            class="form-control"
+            type="password"
+            id="password"
+            name="password"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          />
+          <button
+            type="button"
+            class="password-toggle-btn"
+            data-password-target="password"
+            aria-label="Show password"
+            aria-pressed="false"
+            title="Show password"
+          >
+            {% include "password_eye_icons.html" %}
+          </button>
+        </div>
       </div>
 
       <div class="mb-3">
         <label for="password_confirm" class="form-label">Confirm password</label>
-        <input
-          class="form-control"
-          type="password"
-          id="password_confirm"
-          name="password_confirm"
-          autocomplete="new-password"
-          minlength="8"
-          required
-        />
+        <div class="password-toggle-group">
+          <input
+            class="form-control"
+            type="password"
+            id="password_confirm"
+            name="password_confirm"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          />
+          <button
+            type="button"
+            class="password-toggle-btn"
+            data-password-target="password_confirm"
+            aria-label="Show password"
+            aria-pressed="false"
+            title="Show password"
+          >
+            {% include "password_eye_icons.html" %}
+          </button>
+        </div>
       </div>
 
       <button type="submit" class="btn btn-primary">Create account</button>
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/password-toggle.js" defer></script>
 {% endblock %}

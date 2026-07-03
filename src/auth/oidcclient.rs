@@ -9,9 +9,9 @@ use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
 use oauth2::{AuthType, EndpointMaybeSet, EndpointNotSet, EndpointSet, basic::BasicTokenType};
 use openidconnect::{
     AccessTokenHash, AuthUrl, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret,
-    CsrfToken, EmptyAdditionalClaims, EmptyExtraTokenFields, IdTokenFields, IssuerUrl, Nonce,
+    CsrfToken, EmptyAdditionalClaims, EmptyExtraTokenFields, IdTokenFields, IssuerUrl, JsonWebKeySetUrl, Nonce,
     OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope,
-    SignatureVerificationError, StandardTokenResponse, TokenResponse,
+    SignatureVerificationError, StandardTokenResponse, TokenResponse, TokenUrl,
     core::{
         CoreAuthenticationFlow, CoreClient, CoreGenderClaim, CoreIdToken, CoreIdTokenClaims,
         CoreIdTokenVerifier, CoreJsonWebKeySet, CoreJweContentEncryptionAlgorithm,
@@ -75,6 +75,9 @@ pub struct OIDCClient {
     client_id: String,
     client_secret: String,
     auth_url_override: Option<String>,
+    discovery_issuer_url: Option<String>,
+    token_endpoint_override: Option<String>,
+    jwks_uri_override: Option<String>,
     inner: Arc<RwLock<Option<Arc<OidcInner>>>>,
 }
 
@@ -147,6 +150,9 @@ impl OIDCClient {
         client_id: &str,
         client_secret: &str,
         authorization_endpoint: Option<String>,
+        discovery_issuer_url: Option<String>,
+        token_endpoint_override: Option<String>,
+        jwks_uri_override: Option<String>,
     ) -> Result<Self> {
         let http_client = {
             let danger_accept_invalid_certs = config::danger_accept_invalid_certs()?;
@@ -163,6 +169,9 @@ impl OIDCClient {
             client_id: client_id.to_string(),
             client_secret: client_secret.to_string(),
             auth_url_override: authorization_endpoint,
+            discovery_issuer_url,
+            token_endpoint_override,
+            jwks_uri_override,
             inner: Arc::new(RwLock::new(None)),
         })
     }
@@ -194,34 +203,37 @@ impl OIDCClient {
     }
 
     async fn discover_metadata(&self) -> Result<CoreProviderMetadata> {
-        let issuer = self.resolve_discovery_issuer().await?;
-        debug!("Loading discovery document from {issuer}");
+        let discovery_issuer = if let Some(resource) = config::oidc_webfinger_resource() {
+            self.webfinger_issuer(&resource).await?
+        } else {
+            self.discovery_issuer_url
+                .clone()
+                .unwrap_or_else(|| self.issuer_url.clone())
+        };
+        debug!("Loading discovery document from {discovery_issuer}");
         let metadata = CoreProviderMetadata::discover_async(
-            IssuerUrl::new(issuer.clone())?,
+            IssuerUrl::new(discovery_issuer.to_string())?,
             &self.http_client,
         )
         .await
-        .with_context(|| format!("Loading issuer data from {issuer}"))?;
-        self.validate_issuer(&metadata)?;
+        .with_context(|| format!("Loading issuer data from {discovery_issuer}"))?;
+        self.validate_issuer(&metadata, &discovery_issuer)?;
         Ok(metadata)
     }
 
-    fn validate_issuer(&self, metadata: &CoreProviderMetadata) -> Result<()> {
+    fn validate_issuer(
+        &self,
+        metadata: &CoreProviderMetadata,
+        discovery_issuer: &str,
+    ) -> Result<()> {
         let discovered = normalize_issuer(metadata.issuer().url().as_str());
-        let expected = normalize_issuer(&self.issuer_url);
+        let expected = normalize_issuer(discovery_issuer);
         if discovered != expected {
             return Err(anyhow!(
                 "issuer mismatch: expected {expected}, discovered {discovered}"
             ));
         }
         Ok(())
-    }
-
-    async fn resolve_discovery_issuer(&self) -> Result<String> {
-        if let Some(resource) = config::oidc_webfinger_resource() {
-            return self.webfinger_issuer(&resource).await;
-        }
-        Ok(self.issuer_url.clone())
     }
 
     fn webfinger_host_and_scheme(resource: &str) -> Result<(String, String)> {
@@ -318,6 +330,25 @@ impl OIDCClient {
                 })?,
             );
         }
+        if let Some(token_endpoint_url) = &self.token_endpoint_override {
+            trace!("Setting token endpoint to {token_endpoint_url}");
+            metadata = metadata.set_token_endpoint(Some(
+                TokenUrl::new(token_endpoint_url.clone())
+                    .with_context(|| format!("Token endpoint is not valid: {token_endpoint_url}"))?,
+            ));
+        }
+        if let Some(jwks_uri_url) = &self.jwks_uri_override {
+            trace!("Setting JWKS URI to {jwks_uri_url}");
+            metadata = metadata.set_jwks_uri(
+                JsonWebKeySetUrl::new(jwks_uri_url.clone())
+                    .with_context(|| format!("JWKS URI is not valid: {jwks_uri_url}"))?,
+            );
+        }
+        trace!("Setting issuer for ID token validation to {}", self.issuer_url);
+        metadata = metadata.set_issuer(
+            IssuerUrl::new(self.issuer_url.clone())
+                .context("Configured issuer URL is not valid")?,
+        );
 
         let auth_type = resolve_auth_type(&metadata);
         let client = CoreClient::from_provider_metadata(
