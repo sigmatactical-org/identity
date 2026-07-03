@@ -74,11 +74,7 @@ async fn dump_identity_debug() {
     let Some(cmd) = std::env::var("CONFORMANCE_IDENTITY_DEBUG_CMD").ok() else {
         return;
     };
-    let _ = Command::new("bash")
-        .arg("-lc")
-        .arg(&cmd)
-        .status()
-        .await;
+    let _ = Command::new("bash").arg("-lc").arg(&cmd).status().await;
 }
 
 pub async fn trigger_discover() -> Result<()> {

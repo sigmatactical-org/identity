@@ -33,8 +33,7 @@ pub fn listen_port() -> String {
 
 /// PostgreSQL connection URL for sessions and health checks.
 pub fn database_url() -> String {
-    var_optional("DATABASE_URL")
-        .unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string())
+    var_optional("DATABASE_URL").unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string())
 }
 
 pub fn is_production() -> bool {

@@ -19,18 +19,20 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use axum_macros::debug_handler;
 use hyper_rustls::HttpsConnector;
+use sqlx::PgPool;
 use tower::ServiceBuilder;
 use tower_http::{
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
 };
 use tower_sessions::{Session, SessionManagerLayer, SessionStore, service::PrivateCookie};
-use sqlx::PgPool;
 use tracing::{debug, error, warn};
 
 use crate::{
-    auth::{AppConfigurationState, OIDCClient, SessionTokens, auth_routes, register_routes},
-    auth::{RegistrationAppSettings, KeycloakAdmin},
+    auth::{
+        AppConfigurationState, OIDCClient, RegistrationDeps, SessionTokens, auth_routes,
+        register_routes,
+    },
     config,
     monitoring::health_routes,
     session::{SESSION_KEY_CSRF_TOKEN, SESSION_KEY_JWT},
@@ -403,8 +405,7 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
     pool: PgPool,
     remaining_secs_threshold: u64,
     app_config: AppConfigurationState,
-    registration_settings: Option<RegistrationAppSettings>,
-    keycloak_admin: Option<KeycloakAdmin>,
+    registration: Option<RegistrationDeps>,
 ) -> Result<Router> {
     let files_root = config::files_dir();
     let files_root_path = Path::new(&files_root);
@@ -424,7 +425,7 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         .merge(sigma_theme::axum::router())
         .merge(themed_page_routes());
 
-    if let (Some(settings), Some(admin)) = (registration_settings, keycloak_admin) {
+    if let Some(RegistrationDeps { settings, admin }) = registration {
         app = app.merge(register_routes(settings, admin));
     }
 

@@ -3,9 +3,7 @@ use time::Duration;
 use anyhow::{Context, Result};
 use cookie::Key;
 use sqlx::PgPool;
-use tower_sessions::{
-    Expiry, Session, SessionManagerLayer, SessionStore, service::PrivateCookie,
-};
+use tower_sessions::{Expiry, Session, SessionManagerLayer, SessionStore, service::PrivateCookie};
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing::debug;
 

@@ -16,7 +16,7 @@ pub use login::LoginAppSettings;
 pub use logout::LogoutAppSettings;
 pub use logout::LogoutBehavior;
 pub use oidcclient::OIDCClient;
-pub use register::RegistrationAppSettings;
+pub use register::{RegistrationAppSettings, RegistrationDeps};
 
 pub(crate) use keycloak_admin::KeycloakAdmin;
 
@@ -158,17 +158,11 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
     let mut router = Router::new()
         .route(
             "/login",
-            get(login).layer(
-                ServiceBuilder::new()
-                    .layer(Extension(oidc_client.clone())),
-            ),
+            get(login).layer(ServiceBuilder::new().layer(Extension(oidc_client.clone()))),
         )
         .route(
             "/callback",
-            callback_route.layer(
-                ServiceBuilder::new()
-                    .layer(Extension(oidc_client.clone())),
-            ),
+            callback_route.layer(ServiceBuilder::new().layer(Extension(oidc_client.clone()))),
         )
         .route(
             "/refresh",

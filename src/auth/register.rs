@@ -11,10 +11,13 @@ use url::Url;
 
 use crate::templates;
 
-use super::{
-    allowlist::UriAllowlist,
-    keycloak_admin::KeycloakAdmin,
-};
+use super::{allowlist::UriAllowlist, keycloak_admin::KeycloakAdmin};
+
+#[derive(Clone)]
+pub struct RegistrationDeps {
+    pub settings: RegistrationAppSettings,
+    pub admin: KeycloakAdmin,
+}
 
 #[derive(Clone, Debug)]
 pub struct RegistrationAppSettings {
@@ -75,6 +78,7 @@ pub(crate) async fn register_form(
         last_name: params.last_name.unwrap_or_default(),
         error: None,
     })
+    .map_err(|error| *error)
 }
 
 #[debug_handler]
@@ -96,7 +100,8 @@ pub(crate) async fn register_submit(
             last_name: form.last_name,
             error: Some(error),
         })
-        .map(|html| html.into_response());
+        .map(|html| html.into_response())
+        .map_err(|error| *error);
     }
 
     match keycloak
@@ -118,7 +123,8 @@ pub(crate) async fn register_submit(
             last_name: form.last_name,
             error: Some(error.to_string()),
         })
-        .map(|html| html.into_response()),
+        .map(|html| html.into_response())
+        .map_err(|error| *error),
     }
 }
 
@@ -131,7 +137,7 @@ struct RegisterPage {
     error: Option<String>,
 }
 
-fn render_register_page(page: RegisterPage) -> Result<Html<String>, Response> {
+fn render_register_page(page: RegisterPage) -> Result<Html<String>, Box<Response>> {
     templates::render_register_html(
         &page.return_url,
         &page.email,
@@ -143,7 +149,7 @@ fn render_register_page(page: RegisterPage) -> Result<Html<String>, Response> {
     .map(Html)
     .map_err(|error| {
         tracing::error!("Failed to render registration page: {error}");
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+        Box::new((StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response())
     })
 }
 

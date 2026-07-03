@@ -7,8 +7,8 @@ use tracing::{debug, warn};
 
 use crate::{
     auth::{
-        AppConfigurationState, LoginAppSettings, LogoutAppSettings, LogoutBehavior, OIDCClient,
-        RegistrationAppSettings, KeycloakAdmin, allowlist::UriAllowlist,
+        AppConfigurationState, KeycloakAdmin, LoginAppSettings, LogoutAppSettings, LogoutBehavior,
+        OIDCClient, RegistrationAppSettings, RegistrationDeps, allowlist::UriAllowlist,
     },
     config::validate_session_secret,
     http::{ProxyConfig, app},
@@ -142,13 +142,11 @@ pub async fn run() -> anyhow::Result<()> {
         },
     };
 
-    let registration_settings = if config::registration_enabled() {
-        Some(RegistrationAppSettings::new(config::registration_return_uris()?))
-    } else {
-        None
-    };
-    let keycloak_admin = if registration_settings.is_some() {
-        Some(KeycloakAdmin::from_env()?)
+    let registration = if config::registration_enabled() {
+        Some(RegistrationDeps {
+            settings: RegistrationAppSettings::new(config::registration_return_uris()?),
+            admin: KeycloakAdmin::from_env()?,
+        })
     } else {
         None
     };
@@ -160,8 +158,7 @@ pub async fn run() -> anyhow::Result<()> {
         pool,
         remaining_secs_threshold,
         app_config,
-        registration_settings,
-        keycloak_admin,
+        registration,
     );
 
     let listener = http::port_listener().await?;

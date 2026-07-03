@@ -2700,6 +2700,7 @@ dependencies = [
 [[package]]
 name = "sigma-pg"
 version = "0.1.0"
+source = "git+https://github.com/sigmatactical-org/sigma-pg.git#215893e3e174e749f71b7741f6e2833e12e3fbce"
 dependencies = [
  "anyhow",
  "serde",
