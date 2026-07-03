@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tracing::{debug, info};
 
 pub const PASSING_RESULTS: &[&str] = &["PASSED", "WARNING", "REVIEW", "SKIPPED"];
@@ -97,7 +97,8 @@ impl ConformanceClient {
             urlencoding::encode(plan_id),
             urlencoding::encode(module_name)
         );
-        let data = self.post_json(&url, &json!({})).await?;
+        // Suite expects query params only (HTTP 201), not a JSON body.
+        let data = self.post_no_body(&url).await?;
         data.get("id")
             .and_then(Value::as_str)
             .map(str::to_string)
@@ -174,6 +175,24 @@ impl ConformanceClient {
             );
         }
         Ok(body.to_vec())
+    }
+
+    async fn post_no_body(&self, url: &str) -> Result<Value> {
+        let mut request = self.client.post(url);
+        if let Some(host) = &self.host_header {
+            request = request.header("Host", host);
+        }
+        let response = request.send().await.context(format!("POST {url}"))?;
+        let status = response.status();
+        let bytes = response.bytes().await?;
+        if !status.is_success() {
+            bail!(
+                "POST {url} failed: HTTP {}: {}",
+                status,
+                String::from_utf8_lossy(&bytes)
+            );
+        }
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     async fn post_json(&self, url: &str, body: &Value) -> Result<Value> {

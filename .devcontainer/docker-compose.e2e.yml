@@ -30,3 +30,4 @@ services:
       - KC_PROXY_HEADERS=xforwarded
       - KC_HTTP_ENABLED=true
       - KC_HOSTNAME=https://keycloak.localhost:8101/
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true

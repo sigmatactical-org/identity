@@ -22,10 +22,12 @@ case "$cmd" in
     "${COMPOSE[@]}" down -v
     ;;
   build)
-    "${COMPOSE[@]}" exec -T identity bash -lc 'cd /workspace && cargo build --release'
+    "${COMPOSE[@]}" exec -T identity bash -lc \
+      'cd /workspace && cargo build --release -p sigma-identity'
     ;;
   run)
-    "${COMPOSE[@]}" exec -d identity bash -lc 'cd /workspace && cp .env.e2e-ci .env && cargo run --release'
+    "${COMPOSE[@]}" exec -d identity bash -lc \
+      'cd /workspace && cp .env.e2e-ci .env && nohup ./target/release/sigma-identity >/tmp/sigma-identity.log 2>&1 &'
     ;;
   wait)
     for _ in $(seq 1 90); do
