@@ -434,6 +434,7 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
     let files_root = config::files_dir();
     let files_root_path = Path::new(&files_root);
     let spa_apps = walk_dir(&files_root)?;
+    let register_oidc = oidc_client.clone();
     let mut app = Router::new()
         .nest("/api", api_proxy(session_layer, proxy_config)?)
         .nest("/app", health_routes(pool.clone()))
@@ -450,7 +451,12 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         .merge(themed_page_routes());
 
     if let Some(RegistrationDeps { settings, admin }) = registration {
-        app = app.merge(register_routes(settings, admin));
+        app = app.merge(register_routes(
+            settings,
+            admin,
+            register_oidc,
+            session_layer,
+        ));
     }
 
     app = mount_themed_app_assets(app, files_root_path);

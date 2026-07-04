@@ -93,18 +93,7 @@ fn clear_logout_app_uri_cookie() -> Cookie<'static> {
         .build()
 }
 
-/// Keycloak returns the exact `post_logout_redirect_uri`; embed `app_uri` so the
-/// callback survives the IdP round-trip even when session/cookie state is lost.
-fn build_post_logout_redirect_uri(
-    redirect_uri: &str,
-    app_uri: &str,
-) -> Result<String, Box<Response>> {
-    let mut url = Url::parse(redirect_uri)
-        .map_err(|_| Box::new((StatusCode::BAD_REQUEST, "Invalid redirect_uri").into_response()))?;
-    url.query_pairs_mut().append_pair("app_uri", app_uri);
-    Ok(url.to_string())
-}
-
+/// Build the IdP logout URL with client_id and optional id_token_hint.
 fn build_logout_url(
     logout_uri: &str,
     client_id: &str,
@@ -163,13 +152,7 @@ pub(crate) async fn logout(
 
     let jar = jar.add(logout_app_uri_cookie(&logout_query_params.app_uri));
 
-    let post_logout_redirect_uri = match build_post_logout_redirect_uri(
-        &logout_query_params.redirect_uri,
-        &logout_query_params.app_uri,
-    ) {
-        Ok(uri) => uri,
-        Err(resp) => return *resp,
-    };
+    let post_logout_redirect_uri = logout_query_params.redirect_uri.clone();
 
     let id_token = if crate::config::logout_send_id_token_hint() {
         session
@@ -363,10 +346,6 @@ mod tests {
         assert!(
             set_cookie.contains(LOGOUT_APP_URI_COOKIE),
             "logout should set app_uri cookie, got {set_cookie}"
-        );
-        assert!(
-            location.contains("app_uri"),
-            "logout URL should embed app_uri in post_logout_redirect_uri"
         );
     }
 

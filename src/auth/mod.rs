@@ -25,14 +25,16 @@ use axum::{
     extract::FromRef,
     routing::{get, post},
 };
+use axum::http::Method;
+use tower::ServiceBuilder;
+use tower_http::cors::{AllowOrigin, CorsLayer};
+
+use tower_sessions::{SessionManagerLayer, SessionStore, service::PrivateCookie};
 
 use openidconnect::{
     AccessToken, CsrfToken, Nonce, PkceCodeVerifier, RefreshToken, core::CoreIdToken, url::Url,
 };
 use serde::{Deserialize, Serialize};
-use tower::ServiceBuilder;
-
-use tower_sessions::{SessionManagerLayer, SessionStore, service::PrivateCookie};
 
 use self::{
     callback::callback,
@@ -112,6 +114,49 @@ impl SessionTokens {
             .unwrap_or_default()
             > threshold
     }
+
+    /// Display name from the stored ID token (preferred_username, name, or email).
+    pub(crate) fn display_name(&self) -> Option<String> {
+        display_name_from_id_token(&self.id_token)
+    }
+}
+
+fn display_name_from_id_token(id_token: &str) -> Option<String> {
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    let payload = id_token.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
+    let claims: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    if let Some(username) = claims
+        .get("preferred_username")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(username.to_string());
+    }
+    if let Some(name) = claims
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(name.to_string());
+    }
+    claims
+        .get("email")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|email| {
+            email
+                .split('@')
+                .next()
+                .filter(|local| !local.is_empty())
+                .unwrap_or(email)
+                .to_string()
+        })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +199,12 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
     } else {
         get(callback)
     };
+    let status_cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::list(
+            app_config.login_app_settings.cors_origins().to_vec(),
+        ))
+        .allow_methods([Method::GET, Method::OPTIONS])
+        .allow_credentials(true);
 
     let mut router = Router::new()
         .route(
@@ -173,7 +224,7 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
             ),
         )
         .route("/csrftoken", post(csrftoken))
-        .route("/status", get(status))
+        .route("/status", get(status).layer(status_cors))
         .route("/logout", get(logout))
         .route("/logoutcallback", get(logout_callback))
         .layer(session_layer.clone())
@@ -189,18 +240,22 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
     router
 }
 
-pub(crate) fn register_routes(
+pub(crate) fn register_routes<S: SessionStore + Clone + 'static>(
     registration_settings: RegistrationAppSettings,
     keycloak_admin: KeycloakAdmin,
+    oidc_client: OIDCClient,
+    session_layer: &SessionManagerLayer<S, PrivateCookie>,
 ) -> Router {
     Router::new()
         .route(
             "/register",
             get(register_form)
                 .post(register_submit)
-                .layer(Extension(keycloak_admin.clone())),
+                .layer(Extension(keycloak_admin)),
         )
         .route("/register/success", get(register_success))
+        .layer(Extension(oidc_client))
+        .layer(session_layer.clone())
         .with_state(registration_settings)
 }
 
@@ -226,7 +281,7 @@ mod tests {
     use once_cell::sync::Lazy;
     use openidconnect::{
         AccessToken, Audience, AuthUrl, EmptyAdditionalClaims, EmptyAdditionalProviderMetadata,
-        EmptyExtraTokenFields, EndUserEmail, IdToken, IssuerUrl, JsonWebKeyId, JsonWebKeySetUrl,
+        EmptyExtraTokenFields, EndUserEmail, EndUserPreferredUsername, IdToken, IssuerUrl, JsonWebKeyId, JsonWebKeySetUrl,
         Nonce, PrivateSigningKey, RefreshToken, ResponseTypes, Scope, StandardClaims,
         SubjectIdentifier, TokenUrl, UserInfoUrl,
         core::{
@@ -392,6 +447,9 @@ mod tests {
                 // Optional: specify the user's e-mail address. This should only be provided if the
                 // client has been granted the 'profile' or 'email' scopes.
                 .set_email(Some(EndUserEmail::new("bob@example.com".to_string())))
+                .set_preferred_username(Some(EndUserPreferredUsername::new(
+                    "bob".to_string(),
+                )))
                 // Optional: specify whether the provider has verified the user's e-mail address.
                 .set_email_verified(Some(true)),
                 // OpenID Connect Providers may supply custom claims by providing a struct that

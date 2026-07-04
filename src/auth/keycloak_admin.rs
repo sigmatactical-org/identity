@@ -43,7 +43,10 @@ impl KeycloakAdmin {
         let issuer_url = config::var("OIDC_ISSUER_URL")?;
         let client_id = config::var("OIDC_CLIENT_ID")?;
         let client_secret = config::var("OIDC_CLIENT_SECRET")?;
-        let (server_base, realm) = parse_realm_issuer(&issuer_url)?;
+        let (mut server_base, realm) = parse_realm_issuer(&issuer_url)?;
+        if let Some(admin_base) = config::keycloak_admin_base_url() {
+            server_base = admin_base;
+        }
         let danger_accept_invalid_certs = config::danger_accept_invalid_certs()?;
         let http_client = oauth2::reqwest::ClientBuilder::new()
             .danger_accept_invalid_certs(danger_accept_invalid_certs)

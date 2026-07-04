@@ -6,12 +6,18 @@ use axum::{
 };
 use axum_macros::debug_handler;
 use serde::Deserialize;
-use tracing::debug;
+use tower_sessions::Session;
+use tracing::{debug, error};
 use url::Url;
 
 use crate::templates;
 
-use super::{allowlist::UriAllowlist, keycloak_admin::KeycloakAdmin};
+use super::{
+    OIDCClient,
+    allowlist::UriAllowlist,
+    callback::callback_post_token_exchange,
+    keycloak_admin::KeycloakAdmin,
+};
 
 /// Seconds to wait on the success page before redirecting to `return_url`.
 const SUCCESS_REDIRECT_DELAY_SECS: u32 = 3;
@@ -106,6 +112,8 @@ pub(crate) async fn register_success(
 pub(crate) async fn register_submit(
     State(settings): State<RegistrationAppSettings>,
     Extension(keycloak): Extension<KeycloakAdmin>,
+    Extension(oidc_client): Extension<OIDCClient>,
+    session: Session,
     Form(form): Form<RegisterForm>,
 ) -> Result<Response, Response> {
     if !settings.is_return_url_allowed(&form.return_url) {
@@ -135,7 +143,22 @@ pub(crate) async fn register_submit(
         )
         .await
     {
-        Ok(()) => Ok(Redirect::to(&register_success_location(&form.return_url)).into_response()),
+        Ok(()) => match oidc_client
+            .exchange_password(form.username.trim(), &form.password)
+            .await
+        {
+            Ok((jwt, userid)) => {
+                callback_post_token_exchange(&session, jwt, userid).await;
+                Ok(Redirect::to(&form.return_url).into_response())
+            }
+            Err(sign_in_error) => {
+                error!(
+                    "User created but automatic sign-in failed: {:?}",
+                    sign_in_error
+                );
+                Ok(Redirect::to(&register_success_location(&form.return_url)).into_response())
+            }
+        },
         Err(error) => render_register_page(RegisterPage {
             return_url: form.return_url,
             email: form.email,

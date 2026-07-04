@@ -1,4 +1,5 @@
 use tracing::debug;
+use axum::http::HeaderValue;
 
 /// Exact-match and trailing-wildcard (`*`) URI allowlist.
 #[derive(Clone, Debug)]
@@ -32,6 +33,28 @@ impl UriAllowlist {
     }
 }
 
+/// Derive browser origins (`scheme://host:port`) from allowlist entries for CORS.
+pub(crate) fn browser_origins_from_entries(entries: &[String]) -> Vec<HeaderValue> {
+    let mut origins = Vec::new();
+    for entry in entries {
+        let trimmed = entry.trim();
+        let base = trimmed
+            .strip_suffix('*')
+            .unwrap_or(trimmed)
+            .trim_end_matches('/');
+        let Ok(url) = url::Url::parse(base) else {
+            continue;
+        };
+        let origin = url.origin().ascii_serialization();
+        if let Ok(value) = HeaderValue::from_str(&origin) {
+            origins.push(value);
+        }
+    }
+    origins.sort();
+    origins.dedup();
+    origins
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,5 +68,22 @@ mod tests {
         assert!(list.is_allowed("http://example.com"));
         assert!(list.is_allowed("http://example.org/app/"));
         assert!(!list.is_allowed("http://example.com/"));
+    }
+
+    #[test]
+    fn browser_origins_strip_wildcards() {
+        let origins = browser_origins_from_entries(&[
+            "http://store.example:30080/*".to_string(),
+            "http://identity.example/".to_string(),
+        ]);
+        assert_eq!(origins.len(), 2);
+        assert_eq!(
+            origins[0].to_str().unwrap(),
+            "http://identity.example"
+        );
+        assert_eq!(
+            origins[1].to_str().unwrap(),
+            "http://store.example:30080"
+        );
     }
 }

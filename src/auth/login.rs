@@ -6,13 +6,15 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use axum_macros::debug_handler;
+use axum::http::HeaderValue;
 use serde::Deserialize;
 use tower_sessions::Session;
 use tracing::{debug, error, trace};
 
 use crate::{
     auth::{
-        LoginCallbackSessionParameters, allowlist::UriAllowlist, oidcclient::AuthorizeRequestData,
+        LoginCallbackSessionParameters, allowlist::{UriAllowlist, browser_origins_from_entries},
+        oidcclient::AuthorizeRequestData,
         random_alphanumeric_string,
     },
     session::{SESSION_KEY_LOGIN_CALLBACK, purge_store_and_regenerate_session},
@@ -40,14 +42,20 @@ pub(crate) struct LoginQueryParams {
 pub struct LoginAppSettings {
     app_uris: UriAllowlist,
     redirect_uris: UriAllowlist,
+    cors_origins: Vec<HeaderValue>,
 }
 
 impl LoginAppSettings {
     pub fn new(app_uri_entries: Vec<String>, redirect_uri_entries: Vec<String>) -> Self {
         Self {
+            cors_origins: browser_origins_from_entries(&app_uri_entries),
             app_uris: UriAllowlist::new(app_uri_entries),
             redirect_uris: UriAllowlist::new(redirect_uri_entries),
         }
+    }
+
+    pub(crate) fn cors_origins(&self) -> &[HeaderValue] {
+        &self.cors_origins
     }
 
     pub(crate) fn is_app_uri_allowed(&self, app_uri: &str) -> bool {
@@ -89,6 +97,7 @@ pub(crate) async fn login(
             ui_locales: login_query_params.ui_locales.clone(),
             prompt: login_query_params.prompt.clone(),
             kc_idp_hint: login_query_params.kc_idp_hint.clone(),
+            register_return_url: Some(login_query_params.app_uri.clone()),
         })
         .await
         .map_err(|e| {

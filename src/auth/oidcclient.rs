@@ -66,6 +66,8 @@ pub struct AuthorizeRequestData {
     pub ui_locales: Option<String>,
     pub prompt: Option<String>,
     pub kc_idp_hint: Option<String>,
+    /// Passed to Keycloak as `sigma_return_url` for the login-page register link.
+    pub register_return_url: Option<String>,
 }
 
 #[derive(Clone)]
@@ -374,6 +376,56 @@ impl OIDCClient {
         )
     }
 
+    fn id_token_verifier_for_issuer(
+        &self,
+        issuer: IssuerUrl,
+        jwks: CoreJsonWebKeySet,
+    ) -> CoreIdTokenVerifier<'_> {
+        CoreIdTokenVerifier::new_confidential_client(
+            ClientId::new(self.client_id.clone()),
+            ClientSecret::new(self.client_secret.clone()),
+            issuer,
+            jwks,
+        )
+    }
+
+    async fn verify_backchannel_id_token(
+        &self,
+        inner: &OidcInner,
+        id_token: &CoreIdToken,
+    ) -> Result<CoreIdTokenClaims> {
+        let issuer = self
+            .discovery_issuer_url
+            .as_deref()
+            .unwrap_or(self.issuer_url.as_str());
+        let issuer =
+            IssuerUrl::new(issuer.to_string()).context("Backchannel issuer URL is not valid")?;
+
+        for attempt in 0..2 {
+            let jwks = self.fetch_jwks(&inner.metadata).await?;
+            let verifier = self.id_token_verifier_for_issuer(issuer.clone(), jwks);
+            match id_token.claims(&verifier, |_nonce: Option<&Nonce>| Ok(())) {
+                Ok(claims) => return Ok(claims.clone()),
+                Err(
+                    err @ ClaimsVerificationError::SignatureVerification(
+                        SignatureVerificationError::CryptoError(_)
+                        | SignatureVerificationError::AmbiguousKeyId(_)
+                        | SignatureVerificationError::NoMatchingKey,
+                    ),
+                ) if attempt == 0 => {
+                    debug!(
+                        "Backchannel ID token signature verification failed, refetching JWKS: {err:?}"
+                    );
+                    continue;
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Err(anyhow!(
+            "Backchannel ID token signature verification failed after JWKS refresh"
+        ))
+    }
+
     async fn fetch_jwks(&self, metadata: &CoreProviderMetadata) -> Result<CoreJsonWebKeySet> {
         CoreJsonWebKeySet::fetch_async(metadata.jwks_uri(), &self.http_client)
             .await
@@ -600,6 +652,9 @@ impl OIDCClient {
         if let Some(kc_idp_hint) = authorize_request.kc_idp_hint {
             b = b.add_extra_param("kc_idp_hint", kc_idp_hint);
         }
+        if let Some(return_url) = authorize_request.register_return_url {
+            b = b.add_extra_param("sigma_return_url", return_url);
+        }
         if config::oidc_authorize_response_mode().as_deref() == Some("form_post") {
             b = b.add_extra_param("response_mode", "form_post");
         }
@@ -672,6 +727,38 @@ impl OIDCClient {
                 let _ = self.fetch_jwks(&inner.metadata).await;
             }
         }
+
+        token_response_to_session_tokens(&token_response)
+            .map(|tr| (tr, claims.subject().to_string()))
+    }
+
+    /// Resource-owner password grant for post-registration sign-in (dev / trusted server path only).
+    pub(crate) async fn exchange_password(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<(SessionTokens, String)> {
+        use oauth2::{ResourceOwnerPassword, ResourceOwnerUsername};
+
+        let inner = self.ensure_inner().await?;
+        let token_response = inner
+            .client
+            .exchange_password(
+                &ResourceOwnerUsername::new(username.to_string()),
+                &ResourceOwnerPassword::new(password.to_string()),
+            )?
+            .add_scope(Scope::new("openid".to_string()))
+            .request_async(&self.http_client)
+            .await
+            .map_err(|e| {
+                debug_token_request_error(&e);
+                anyhow!("Password grant failed")
+            })?;
+
+        let id_token = token_response
+            .id_token()
+            .ok_or_else(|| anyhow!("Server did not return an ID token"))?;
+        let claims = self.verify_backchannel_id_token(&inner, id_token).await?;
 
         token_response_to_session_tokens(&token_response)
             .map(|tr| (tr, claims.subject().to_string()))

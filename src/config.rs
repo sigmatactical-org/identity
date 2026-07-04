@@ -101,6 +101,12 @@ pub fn oidc_jwks_uri() -> Option<String> {
     var_optional("OIDC_JWKS_URI")
 }
 
+/// When set, Keycloak Admin API and password-grant backchannel calls use this base URL
+/// (e.g. `http://keycloak.sigma-dev.svc.cluster.local`) instead of the public issuer host.
+pub fn keycloak_admin_base_url() -> Option<String> {
+    var_optional("KEYCLOAK_ADMIN_BASE_URL").map(|v| v.trim_end_matches('/').to_string())
+}
+
 /// When set: `client_secret_basic` or `client_secret_post` for token endpoint auth.
 pub fn oidc_token_endpoint_auth_method() -> Option<String> {
     var_optional("OIDC_TOKEN_ENDPOINT_AUTH_METHOD").map(|v| v.trim().to_ascii_lowercase())

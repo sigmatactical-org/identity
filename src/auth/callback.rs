@@ -35,7 +35,7 @@ pub(crate) struct TokenExchangeData {
     pub(crate) redirect_uri: String,
 }
 
-pub(super) async fn callback_post_token_exchange(
+pub(crate) async fn callback_post_token_exchange(
     session: &Session,
     jwt: SessionTokens,
     userid: String,
