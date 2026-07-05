@@ -27,6 +27,10 @@ jobs:
         with:
           repository: sigmatactical-org/sigma-theme
           path: theme
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/sigma-pg
+          path: ../sigma-pg
 
       - name: Prepare build
         run: ./scripts/prepare-local.sh

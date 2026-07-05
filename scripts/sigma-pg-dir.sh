@@ -12,6 +12,7 @@ sigma_pg_dir() {
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   root="$(cd "${script_dir}/.." && pwd)"
   candidates=(
+    "${root}/sigma-pg"
     "${root}/../sigma-pg"
     "${root}/../../sigma-pg"
   )

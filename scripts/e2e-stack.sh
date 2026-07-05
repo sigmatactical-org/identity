@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# shellcheck source=scripts/sigma-pg-dir.sh
+source "$ROOT/scripts/sigma-pg-dir.sh"
+
 COMPOSE=(docker compose -f .devcontainer/docker-compose.yml -f .devcontainer/docker-compose.e2e.yml)
 IDENTITY_BIN="$ROOT/target/release/sigma-identity"
 IDENTITY_LOG="/tmp/sigma-identity.log"
@@ -11,6 +14,19 @@ IDENTITY_LOG="/tmp/sigma-identity.log"
 hosts_keycloak() {
   if ! grep -q '[[:space:]]keycloak\.localhost' /etc/hosts 2>/dev/null; then
     echo "127.0.0.1 keycloak.localhost" | sudo tee -a /etc/hosts >/dev/null
+  fi
+}
+
+ensure_sigma_dev_network() {
+  docker network create sigma-dev >/dev/null 2>&1 || true
+}
+
+ensure_sigma_pg_compose() {
+  if [[ ! -f "$(sigma_pg_compose)" ]]; then
+    echo "error: sigma-pg compose file not found at $(sigma_pg_compose)" >&2
+    echo "       Clone https://github.com/sigmatactical-org/sigma-pg next to this repo" >&2
+    echo "       or set SIGMA_PG_DIR to the checkout path." >&2
+    return 1
   fi
 }
 
@@ -76,6 +92,8 @@ cmd="${1:-}"
 case "$cmd" in
   up)
     hosts_keycloak
+    ensure_sigma_pg_compose
+    ensure_sigma_dev_network
     "${COMPOSE[@]}" up -d --build
     ;;
   down)
