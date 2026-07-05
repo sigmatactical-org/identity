@@ -14,6 +14,8 @@ pub(crate) struct StatusResponse {
     pub(crate) authenticated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) email: Option<String>,
 }
 
 fn status_response_map(session_tokens: Option<SessionTokens>) -> StatusResponse {
@@ -29,6 +31,7 @@ fn status_response_map(session_tokens: Option<SessionTokens>) -> StatusResponse 
                     .ok(),
                 authenticated: true,
                 username: st.display_name(),
+                email: st.email(),
             }
         })
         .unwrap_or_else(|| StatusResponse {
@@ -36,6 +39,7 @@ fn status_response_map(session_tokens: Option<SessionTokens>) -> StatusResponse 
             refresh_expires_in: None,
             authenticated: false,
             username: None,
+            email: None,
         })
 }
 
@@ -140,5 +144,6 @@ mod tests {
             "Should be greater 498 seconds"
         );
         assert_eq!(s.username.as_deref(), Some("bob"));
+        assert_eq!(s.email.as_deref(), Some("bob@example.com"));
     }
 }

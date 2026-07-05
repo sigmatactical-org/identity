@@ -154,6 +154,38 @@ pub fn registration_enabled() -> bool {
         )
 }
 
+/// Dev registration finalization policy (ignored in production).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistrationMode {
+    /// Enable the account immediately after create (default dev behavior).
+    AutoApprove,
+    /// Send Keycloak VERIFY_EMAIL and wait for `/register/verified`.
+    VerifyEmail,
+}
+
+/// Dev/staging registration mode. Production always uses the prod adapter.
+pub fn registration_mode() -> RegistrationMode {
+    if is_production() {
+        return RegistrationMode::VerifyEmail;
+    }
+    match var_optional("REGISTRATION_MODE")
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("verify_email" | "email" | "verification") => RegistrationMode::VerifyEmail,
+        Some("auto_approve" | "approve" | "auto") => RegistrationMode::AutoApprove,
+        _ => RegistrationMode::AutoApprove,
+    }
+}
+
+/// Public browser base URL for links in verification emails (no trailing slash).
+pub fn public_base_url() -> String {
+    var_optional("PUBLIC_BASE_URL")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim_end_matches('/').to_string())
+        .unwrap_or_else(|| "http://127.0.0.1:3000".to_string())
+}
+
 /// Allowed `return_url` destinations for `/register` (comma-separated, exact or trailing `*`).
 pub fn registration_return_uris() -> Result<Vec<String>> {
     let raw = if let Some(value) = var_optional("REGISTRATION_RETURN_URIS") {

@@ -4,8 +4,10 @@ mod conformance;
 mod csrftoken;
 mod keycloak_admin;
 mod login;
+mod registration_adapter;
 mod logout;
 mod oidcclient;
+mod profile;
 mod refresh;
 mod register;
 mod status;
@@ -17,6 +19,8 @@ pub use logout::LogoutAppSettings;
 pub use logout::LogoutBehavior;
 pub use oidcclient::OIDCClient;
 pub use register::{RegistrationAppSettings, RegistrationDeps};
+pub(crate) use profile::ProfileDeps;
+pub(crate) use registration_adapter::RegistrationAdapter;
 
 pub(crate) use keycloak_admin::KeycloakAdmin;
 
@@ -42,7 +46,8 @@ use self::{
     login::login,
     logout::{logout, logout_callback},
     refresh::{RefreshLockManager, refresh},
-    register::{register_form, register_submit, register_success},
+    register::{register_form, register_submit, register_success, register_verified},
+    profile::{profile_form, profile_submit},
     status::status,
 };
 
@@ -119,15 +124,34 @@ impl SessionTokens {
     pub(crate) fn display_name(&self) -> Option<String> {
         display_name_from_id_token(&self.id_token)
     }
+
+    /// Email from the stored ID token.
+    pub(crate) fn email(&self) -> Option<String> {
+        email_from_id_token(&self.id_token)
+    }
+
+    /// Subject (`sub`) from the stored ID token.
+    pub(crate) fn subject(&self) -> Option<String> {
+        id_token_claims(&self.id_token)?
+            .get("sub")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    }
 }
 
-fn display_name_from_id_token(id_token: &str) -> Option<String> {
+fn id_token_claims(id_token: &str) -> Option<serde_json::Value> {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     let payload = id_token.split('.').nth(1)?;
     let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let claims: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn display_name_from_id_token(id_token: &str) -> Option<String> {
+    let claims = id_token_claims(id_token)?;
     if let Some(username) = claims
         .get("preferred_username")
         .and_then(|v| v.as_str())
@@ -157,6 +181,15 @@ fn display_name_from_id_token(id_token: &str) -> Option<String> {
                 .unwrap_or(email)
                 .to_string()
         })
+}
+
+fn email_from_id_token(id_token: &str) -> Option<String> {
+    id_token_claims(id_token)?
+        .get("email")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -243,20 +276,41 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
 pub(crate) fn register_routes<S: SessionStore + Clone + 'static>(
     registration_settings: RegistrationAppSettings,
     keycloak_admin: KeycloakAdmin,
+    registration_adapter: RegistrationAdapter,
     oidc_client: OIDCClient,
     session_layer: &SessionManagerLayer<S, PrivateCookie>,
 ) -> Router {
     Router::new()
         .route(
             "/register",
-            get(register_form)
-                .post(register_submit)
-                .layer(Extension(keycloak_admin)),
+            get(register_form).post(register_submit).layer(
+                ServiceBuilder::new()
+                    .layer(Extension(keycloak_admin.clone()))
+                    .layer(Extension(registration_adapter)),
+            ),
+        )
+        .route(
+            "/register/verified/{user_id}",
+            get(register_verified).layer(Extension(keycloak_admin)),
         )
         .route("/register/success", get(register_success))
         .layer(Extension(oidc_client))
         .layer(session_layer.clone())
         .with_state(registration_settings)
+}
+
+pub(crate) fn profile_routes<S: SessionStore + Clone + 'static>(
+    profile_settings: RegistrationAppSettings,
+    keycloak_admin: KeycloakAdmin,
+    session_layer: &SessionManagerLayer<S, PrivateCookie>,
+) -> Router {
+    Router::new()
+        .route(
+            "/profile",
+            get(profile_form).post(profile_submit).layer(Extension(keycloak_admin)),
+        )
+        .layer(session_layer.clone())
+        .with_state(profile_settings)
 }
 
 pub(crate) fn random_alphanumeric_string(length: usize) -> String {

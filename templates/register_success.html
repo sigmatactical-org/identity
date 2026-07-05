@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Account created — Sigma Tactical Group{% endblock %}
+{% block title %}{% if auto_approved %}Account ready{% else %}Check your email{% endif %} — Sigma Tactical Group{% endblock %}
 
 {% block main_class %}app-main{% endblock %}
 
@@ -8,35 +8,36 @@
 <div class="container">
   <div class="register-card register-success-card">
     <div class="register-success-icon" aria-hidden="true">
+      {% if auto_approved %}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M20 6 9 17l-5-5" />
       </svg>
+      {% else %}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 4h16v16H4z" />
+        <path d="m22 6-10 7L2 6" />
+      </svg>
+      {% endif %}
     </div>
-    <h1>Account created</h1>
-    <p class="lead">Your account was registered successfully.</p>
+    {% if auto_approved %}
+    <h1>Account ready</h1>
+    <p class="lead">Your account was created and approved. You can sign in now.</p>
+    {% else %}
+    <h1>Check your email</h1>
+    <p class="lead">Your account was created and is disabled until you verify your email address.</p>
+    <p class="text-secondary">
+      We sent an activation link to your inbox. Open it to verify your email and activate your account.
+      After that you can sign in.
+    </p>
+    {% endif %}
 
-    {% if redirect_url != "" %}
-    <p class="register-success-countdown" id="register-success-countdown">
-      Redirecting in <span id="register-success-seconds">{{ redirect_delay_secs }}</span> seconds…
-    </p>
+    {% if return_url != "" %}
     <p class="mb-0">
-      <a class="btn btn-primary" href="{{ redirect_url }}">Continue now</a>
+      <a class="btn btn-outline-primary" href="{{ return_url }}">Return to site</a>
     </p>
-    <div
-      id="register-success-redirect"
-      data-redirect-url="{{ redirect_url }}"
-      data-redirect-delay="{{ redirect_delay_secs }}"
-      hidden
-    ></div>
     {% else %}
     <p class="text-secondary mb-0">You can close this page.</p>
     {% endif %}
   </div>
 </div>
-{% endblock %}
-
-{% block extra_scripts %}
-{% if redirect_url != "" %}
-<script src="/static/js/register-success.js" defer></script>
-{% endif %}
 {% endblock %}

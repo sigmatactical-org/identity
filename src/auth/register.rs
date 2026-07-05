@@ -1,31 +1,30 @@
 use axum::{
     Extension, Form,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
 };
 use axum_macros::debug_handler;
 use serde::Deserialize;
-use tower_sessions::Session;
 use tracing::{debug, error};
 use url::Url;
 
+use crate::config;
 use crate::templates;
 
 use super::{
-    OIDCClient,
     allowlist::UriAllowlist,
-    callback::callback_post_token_exchange,
     keycloak_admin::KeycloakAdmin,
+    registration_adapter::{
+        RegistrationAdapter, RegistrationContext, RegistrationOutcome,
+    },
 };
-
-/// Seconds to wait on the success page before redirecting to `return_url`.
-const SUCCESS_REDIRECT_DELAY_SECS: u32 = 3;
 
 #[derive(Clone)]
 pub struct RegistrationDeps {
     pub settings: RegistrationAppSettings,
     pub admin: KeycloakAdmin,
+    pub adapter: RegistrationAdapter,
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +47,14 @@ impl RegistrationAppSettings {
 #[derive(Debug, Deserialize)]
 pub(crate) struct RegisterSuccessQuery {
     return_url: String,
+    #[serde(default)]
+    approved: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RegisterVerifiedQuery {
+    #[serde(default)]
+    return_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,15 +112,50 @@ pub(crate) async fn register_success(
         return Err((StatusCode::BAD_REQUEST, "Invalid return_url").into_response());
     }
 
-    render_register_success_page(&params.return_url).map_err(|error| *error)
+    render_register_success_page(&params.return_url, params.approved.unwrap_or(false))
+        .map_err(|error| *error)
+}
+
+#[debug_handler]
+pub(crate) async fn register_verified(
+    State(settings): State<RegistrationAppSettings>,
+    Extension(keycloak): Extension<KeycloakAdmin>,
+    Path(user_id): Path<String>,
+    Query(params): Query<RegisterVerifiedQuery>,
+) -> Result<Html<String>, Response> {
+    if user_id.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Missing user").into_response());
+    }
+
+    let return_url = match params.return_url.filter(|value| !value.trim().is_empty()) {
+        Some(return_url) => return_url,
+        None => keycloak.registration_return_url(user_id.trim()).await.map_err(|error| {
+            error!("Failed to load registration return URL: {:?}", error);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Activation failed").into_response()
+        })?,
+    };
+
+    if !settings.is_return_url_allowed(&return_url) {
+        debug!("return_url {} is not allowed", return_url);
+        return Err((StatusCode::BAD_REQUEST, "Invalid return_url").into_response());
+    }
+
+    let activated = keycloak
+        .activate_verified_user(user_id.trim())
+        .await
+        .map_err(|error| {
+            error!("Failed to activate verified user: {:?}", error);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Activation failed").into_response()
+        })?;
+
+    render_register_verified_page(&return_url, activated).map_err(|error| *error)
 }
 
 #[debug_handler]
 pub(crate) async fn register_submit(
     State(settings): State<RegistrationAppSettings>,
     Extension(keycloak): Extension<KeycloakAdmin>,
-    Extension(oidc_client): Extension<OIDCClient>,
-    session: Session,
+    Extension(adapter): Extension<RegistrationAdapter>,
     Form(form): Form<RegisterForm>,
 ) -> Result<Response, Response> {
     if !settings.is_return_url_allowed(&form.return_url) {
@@ -133,32 +175,62 @@ pub(crate) async fn register_submit(
         .map_err(|error| *error);
     }
 
+    let username = form.username.trim();
+    let email = form.email.trim();
+
     match keycloak
         .create_user(
-            form.username.trim(),
-            form.email.trim(),
+            username,
+            email,
             form.first_name.trim(),
             form.last_name.trim(),
             &form.password,
+            &form.return_url,
         )
         .await
     {
-        Ok(()) => match oidc_client
-            .exchange_password(form.username.trim(), &form.password)
-            .await
-        {
-            Ok((jwt, userid)) => {
-                callback_post_token_exchange(&session, jwt, userid).await;
-                Ok(Redirect::to(&form.return_url).into_response())
+        Ok(created) => {
+            let context = RegistrationContext {
+                return_url: form.return_url.clone(),
+                verification_redirect_uri: verification_redirect_uri(&created.id),
+            };
+            match adapter
+                .finalize_registration(&keycloak, &created, &context)
+                .await
+            {
+                Ok(RegistrationOutcome::Approved) => Ok(Redirect::to(&register_success_location(
+                    &form.return_url,
+                    true,
+                ))
+                .into_response()),
+                Ok(RegistrationOutcome::PendingEmailVerification) => {
+                    Ok(Redirect::to(&register_success_location(&form.return_url, false))
+                        .into_response())
+                }
+                Err(finalize_error) => {
+                    error!(
+                        "Registration finalization failed after user create: {:?}",
+                        finalize_error
+                    );
+                    if let Err(delete_error) = keycloak.delete_user(&created.id).await {
+                        error!(
+                            "Failed to roll back user after registration finalization failure: {:?}",
+                            delete_error
+                        );
+                    }
+                    return render_register_page(RegisterPage {
+                        return_url: form.return_url,
+                        email: form.email,
+                        username: form.username,
+                        first_name: form.first_name,
+                        last_name: form.last_name,
+                        error: Some(finalization_error_message(&finalize_error)),
+                    })
+                    .map(|html| html.into_response())
+                    .map_err(|error| *error);
+                }
             }
-            Err(sign_in_error) => {
-                error!(
-                    "User created but automatic sign-in failed: {:?}",
-                    sign_in_error
-                );
-                Ok(Redirect::to(&register_success_location(&form.return_url)).into_response())
-            }
-        },
+        }
         Err(error) => render_register_page(RegisterPage {
             return_url: form.return_url,
             email: form.email,
@@ -181,16 +253,26 @@ struct RegisterPage {
     error: Option<String>,
 }
 
-fn render_register_success_page(return_url: &str) -> Result<Html<String>, Box<Response>> {
-    let redirect_url = if return_url.is_empty() {
-        String::new()
-    } else {
-        success_redirect(return_url)
-    };
-    templates::render_register_success_html(&redirect_url, SUCCESS_REDIRECT_DELAY_SECS)
+fn render_register_success_page(
+    return_url: &str,
+    auto_approved: bool,
+) -> Result<Html<String>, Box<Response>> {
+    templates::render_register_success_html(return_url, auto_approved)
         .map(Html)
         .map_err(|error| {
             tracing::error!("Failed to render registration success page: {error}");
+            Box::new((StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response())
+        })
+}
+
+fn render_register_verified_page(
+    return_url: &str,
+    activated: bool,
+) -> Result<Html<String>, Box<Response>> {
+    templates::render_register_verified_html(return_url, activated)
+        .map(Html)
+        .map_err(|error| {
+            tracing::error!("Failed to render registration verified page: {error}");
             Box::new((StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response())
         })
 }
@@ -227,21 +309,35 @@ fn validate_form(form: &RegisterForm) -> Option<String> {
     None
 }
 
-fn register_success_location(return_url: &str) -> String {
+fn verification_redirect_uri(user_id: &str) -> String {
+    format!(
+        "{}/register/verified/{}",
+        config::public_base_url().trim_end_matches('/'),
+        user_id
+    )
+}
+
+fn register_success_location(return_url: &str, approved: bool) -> String {
     let mut url = Url::parse("http://_/register/success").expect("valid success path");
-    url.query_pairs_mut().append_pair("return_url", return_url);
+    {
+        let mut pairs = url.query_pairs_mut();
+        pairs.append_pair("return_url", return_url);
+        if approved {
+            pairs.append_pair("approved", "true");
+        }
+    }
     match url.query() {
         Some(query) => format!("/register/success?{query}"),
         None => "/register/success".to_string(),
     }
 }
 
-fn success_redirect(return_url: &str) -> String {
-    let Ok(mut url) = Url::parse(return_url) else {
-        return return_url.to_string();
-    };
-    url.query_pairs_mut().append_pair("registered", "1");
-    url.to_string()
+fn finalization_error_message(error: &anyhow::Error) -> String {
+    let message = error.to_string();
+    if message.contains("production account registration is not implemented") {
+        return "Account registration is not available yet.".into();
+    }
+    "Your account could not be created. Please try again later.".into()
 }
 
 #[cfg(test)]
@@ -260,16 +356,36 @@ mod tests {
     }
 
     #[test]
-    fn success_redirect_appends_query_param() {
-        let url = success_redirect("http://localhost:3000/exampleapp/");
-        assert!(url.contains("registered=1"));
-    }
-
-    #[test]
     fn register_success_location_encodes_return_url() {
-        let location = register_success_location("http://store.example/?next=/");
+        let location = register_success_location("http://store.example/?next=/", false);
         assert!(location.starts_with("/register/success?"));
         assert!(location.contains("return_url="));
         assert!(location.contains("store.example"));
+        assert!(!location.contains("approved="));
+    }
+
+    #[test]
+    fn register_success_location_includes_approved_when_auto_approved() {
+        let location = register_success_location("http://store.example/", true);
+        assert!(location.contains("approved=true"));
+    }
+
+    #[test]
+    fn finalization_error_maps_prod_not_implemented() {
+        let err = anyhow::anyhow!("production account registration is not implemented");
+        assert_eq!(
+            finalization_error_message(&err),
+            "Account registration is not available yet."
+        );
+    }
+
+    #[test]
+    fn verification_redirect_uses_path_for_user_id() {
+        let url = verification_redirect_uri("user-123");
+        assert_eq!(
+            url,
+            "http://127.0.0.1:3000/register/verified/user-123"
+        );
+        assert!(!url.contains('?'));
     }
 }

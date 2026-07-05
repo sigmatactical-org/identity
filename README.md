@@ -11,7 +11,7 @@ Shared site chrome comes from [sigma-theme](https://github.com/sigmatactical-org
 ## Features
 
 - **Authentication** — OIDC login (e.g. Keycloak), JWT stored in a PostgreSQL-backed server session, exposed to browsers via an http-only cookie
-- **Registration** — self-service account creation at `/register` (Keycloak Admin API), with prefilled query parameters and validated `return_url` redirect
+- **Registration** — self-service account creation at `/register` (Keycloak Admin API). New accounts are created **disabled** with a `createdDate` attribute, emailed a **verify/activate** link, and enabled only after email verification.
 - **API proxy** — forward authenticated requests to backends with JWT attached; CSRF on all methods (including GET); path-based routing to multiple targets; unauthenticated requests receive 401
 - **File serving** — serve a local directory; directories with `index.html` behave as single-page apps
 
@@ -37,7 +37,7 @@ Required:
 | `IDENTITY_LOGOUT_REDIRECT_APP_URIS` | Allowed post-logout app redirect URIs |
 | `IDENTITY_LOGOUT_OIDC_REDIRECT_URIS` | Allowed `post_logout_redirect_uri` values sent to the IdP |
 
-Registration (`/register`) uses the OIDC client's service account to create users in Keycloak. The identity client needs the `manage-users` role on `realm-management`. Allowed `return_url` values default to `IDENTITY_LOGIN_REDIRECT_APP_URIS` (override with `IDENTITY_REGISTRATION_RETURN_URIS`). Disable with `IDENTITY_REGISTRATION_DISABLED=true`.
+Registration (`/register`) uses the OIDC client's service account to create users in Keycloak. The identity client needs the `manage-users` role on `realm-management`. New users are stored disabled with a `createdDate` user attribute (Keycloak also records `createdTimestamp`), emailed a `VERIFY_EMAIL` action link, and enabled at `/register/verified` after the address is confirmed. Allowed `return_url` values default to `IDENTITY_LOGIN_REDIRECT_APP_URIS` (override with `IDENTITY_REGISTRATION_RETURN_URIS`). Set `IDENTITY_PUBLIC_BASE_URL` for verification-email redirect links. Disable with `IDENTITY_REGISTRATION_DISABLED=true`.
 
 Optional:
 

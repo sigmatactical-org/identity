@@ -8,7 +8,8 @@ use tracing::{debug, warn};
 use crate::{
     auth::{
         AppConfigurationState, KeycloakAdmin, LoginAppSettings, LogoutAppSettings, LogoutBehavior,
-        OIDCClient, RegistrationAppSettings, RegistrationDeps, allowlist::UriAllowlist,
+        OIDCClient, ProfileDeps, RegistrationAppSettings, RegistrationDeps, RegistrationAdapter,
+        allowlist::UriAllowlist,
     },
     config::validate_session_secret,
     http::{ProxyConfig, app},
@@ -151,14 +152,24 @@ pub async fn run() -> anyhow::Result<()> {
         },
     };
 
+    let return_uris = config::registration_return_uris()?;
+    let profile_settings = RegistrationAppSettings::new(return_uris.clone());
+    let keycloak_admin = KeycloakAdmin::from_env().ok();
+
     let registration = if config::registration_enabled() {
-        Some(RegistrationDeps {
-            settings: RegistrationAppSettings::new(config::registration_return_uris()?),
-            admin: KeycloakAdmin::from_env()?,
+        keycloak_admin.as_ref().map(|admin| RegistrationDeps {
+            settings: profile_settings.clone(),
+            admin: admin.clone(),
+            adapter: RegistrationAdapter::from_env(),
         })
     } else {
         None
     };
+
+    let profile = keycloak_admin.map(|admin| ProfileDeps {
+        settings: profile_settings,
+        admin,
+    });
 
     let app = app(
         oidc_client,
@@ -168,6 +179,7 @@ pub async fn run() -> anyhow::Result<()> {
         remaining_secs_threshold,
         app_config,
         registration,
+        profile,
     );
 
     let listener = http::port_listener().await?;

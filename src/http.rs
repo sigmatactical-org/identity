@@ -30,7 +30,7 @@ use tracing::{debug, error, warn};
 
 use crate::{
     auth::{
-        AppConfigurationState, OIDCClient, RegistrationDeps, SessionTokens, auth_routes,
+        AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens, auth_routes,
         register_routes,
     },
     config,
@@ -430,6 +430,7 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
     remaining_secs_threshold: u64,
     app_config: AppConfigurationState,
     registration: Option<RegistrationDeps>,
+    profile: Option<ProfileDeps>,
 ) -> Result<Router> {
     let files_root = config::files_dir();
     let files_root_path = Path::new(&files_root);
@@ -450,13 +451,23 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         .merge(sigma_theme::axum::router())
         .merge(themed_page_routes());
 
-    if let Some(RegistrationDeps { settings, admin }) = registration {
+    if let Some(RegistrationDeps {
+        settings,
+        admin,
+        adapter,
+    }) = registration
+    {
         app = app.merge(register_routes(
             settings,
             admin,
+            adapter,
             register_oidc,
             session_layer,
         ));
+    }
+
+    if let Some(ProfileDeps { settings, admin }) = profile {
+        app = app.merge(crate::auth::profile_routes(settings, admin, session_layer));
     }
 
     app = mount_themed_app_assets(app, files_root_path);

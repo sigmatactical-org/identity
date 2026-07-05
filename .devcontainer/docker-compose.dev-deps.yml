@@ -21,6 +21,7 @@ services:
       KC_DB_PASSWORD: sigma
     volumes:
       - ../dev_realm.json:/opt/keycloak/data/import/dev_realm.json
+      - ../../theme/assets/keycloak/sigma/login:/opt/keycloak/themes/sigma/login:ro
     networks:
       - sigma-dev
 

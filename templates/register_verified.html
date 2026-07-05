@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Account activated — Sigma Tactical Group{% endblock %}
+
+{% block main_class %}app-main{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="register-card register-success-card">
+    <div class="register-success-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    </div>
+    {% if activated %}
+    <h1>Account activated</h1>
+    <p class="lead">Your email is verified and your account is now enabled.</p>
+    <p class="text-secondary mb-0">You can sign in and continue where you left off.</p>
+    {% else %}
+    <h1>Verification pending</h1>
+    <p class="lead">Your email is not verified yet.</p>
+    <p class="text-secondary mb-0">Open the activation link we emailed you, then return here.</p>
+    {% endif %}
+
+    {% if return_url != "" %}
+    <p class="mt-4 mb-0">
+      <a class="btn btn-primary" href="{{ return_url }}">Continue</a>
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
