@@ -10,7 +10,10 @@ test.describe("example app login", () => {
     await expect(page.getByRole("heading", { name: "Actions" })).toBeVisible();
     await expect(page.getByText("not authenticated")).toBeVisible();
 
-    await page.getByRole("button", { name: "Login" }).click();
+    await Promise.all([
+      page.waitForURL(/\/auth\/login|keycloak|8101/),
+      page.getByRole("button", { name: "Login" }).click(),
+    ]);
     const cookies = await context.cookies();
     expect(cookies.map((cookie) => cookie.name)).toContain("identity.sid");
 

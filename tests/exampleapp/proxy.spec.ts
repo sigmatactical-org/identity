@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { loginUser, logoutViaExampleApp } from "../helper.ts";
+import { loginViaExampleApp, logoutViaExampleApp } from "../helper.ts";
 
 test.describe("example app proxy", () => {
   test("requires CSRF token and attaches JWT to proxied requests", async ({
@@ -15,9 +15,7 @@ test.describe("example app proxy", () => {
       "Missing or invalid CSRF token",
     );
 
-    await page.getByRole("button", { name: "Login" }).click();
-    await loginUser(page, "user1");
-    await expect(page.locator("#loginStatus")).toContainText("authenticated");
+    await loginViaExampleApp(page);
 
     await expect(page.locator("#csrftoken")).toBeEmpty();
     await page.getByRole("button", { name: "Echo request" }).click();

@@ -18,7 +18,10 @@ export const loginUser = async (page: Page, user: KnownUsers) => {
 export const loginViaExampleApp = async (page: Page, user: KnownUsers = "user1") => {
   const conf = await configuration();
   await page.goto(`${conf.baseUrl}/exampleapp/`);
-  await page.getByRole("button", { name: "Login" }).click();
+  await Promise.all([
+    page.waitForURL(/\/auth\/login|keycloak|8101/),
+    page.getByRole("button", { name: "Login" }).click(),
+  ]);
   await page.getByRole("textbox", { name: "Username or email" }).waitFor();
   await loginUser(page, user);
   await expect(page.locator("#loginStatus")).toContainText("authenticated", {

@@ -41,6 +41,28 @@ prepare_sigma_pg_layout() {
   fi
 }
 
+keycloak_theme_marker() {
+  printf '%s\n' "$1/assets/keycloak/sigma/login/theme.properties"
+}
+
+prepare_theme_layout() {
+  # docker-compose mounts ../../theme from .devcontainer (monorepo: sigma/theme).
+  # CI checks out sigma-theme at identity/theme; symlink parent ../theme for compose.
+  local compose_theme expected
+  compose_theme="$(cd "$ROOT/.devcontainer/../.." && pwd)/theme"
+  expected="$(keycloak_theme_marker "$compose_theme")"
+  if [[ -f "$expected" ]]; then
+    return 0
+  fi
+
+  local repo_theme
+  repo_theme="$(keycloak_theme_marker "$ROOT/theme")"
+  if [[ -f "$repo_theme" ]]; then
+    mkdir -p "$(dirname "$compose_theme")"
+    ln -sfn "$ROOT/theme" "$compose_theme"
+  fi
+}
+
 identity_running() {
   "${COMPOSE[@]}" ps --status running identity 2>/dev/null | grep -q identity
 }
@@ -104,11 +126,13 @@ case "$cmd" in
   up)
     hosts_keycloak
     prepare_sigma_pg_layout
+    prepare_theme_layout
     ensure_sigma_dev_network
     "${COMPOSE[@]}" up -d --build
     ;;
   down)
     prepare_sigma_pg_layout
+    prepare_theme_layout
     "${COMPOSE[@]}" down -v
     ;;
   build)
@@ -125,13 +149,14 @@ case "$cmd" in
     ;;
   wait)
     for _ in $(seq 1 90); do
-      if curl -skf https://localhost:3000/app/up >/dev/null; then
-        echo "identity ready"
+      if curl -skf https://localhost:3000/app/up >/dev/null \
+        && curl -skf https://keycloak.localhost:8101/realms/multcorp/.well-known/openid-configuration >/dev/null; then
+        echo "identity and keycloak ready"
         exit 0
       fi
       sleep 2
     done
-    echo "error: identity did not become ready at https://localhost:3000/app/up" >&2
+    echo "error: identity/keycloak did not become ready" >&2
     dump_identity_debug
     "${COMPOSE[@]}" logs identity traefik keycloak
     exit 1
