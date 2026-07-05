@@ -35,7 +35,7 @@ export const logoutViaExampleApp = async (page: Page) => {
 
   // Keycloak may show a confirmation step when no id_token_hint is sent.
   await page
-    .getByRole("button", { name: "Logout" })
+    .getByRole("button", { name: "Sign out" })
     .click({ timeout: 5_000 })
     .catch(() => {});
 
