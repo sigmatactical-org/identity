@@ -30,6 +30,17 @@ ensure_sigma_pg_compose() {
   fi
 }
 
+prepare_sigma_pg_layout() {
+  ensure_sigma_pg_compose
+  local pg_dir expected
+  pg_dir="$(sigma_pg_dir)"
+  expected="$(cd "$ROOT/.devcontainer/../.." && pwd)/sigma-pg"
+  if [[ ! -f "${expected}/docker-compose.deps.yml" ]]; then
+    mkdir -p "$(dirname "$expected")"
+    ln -sfn "$pg_dir" "$expected"
+  fi
+}
+
 identity_running() {
   "${COMPOSE[@]}" ps --status running identity 2>/dev/null | grep -q identity
 }
@@ -92,11 +103,12 @@ cmd="${1:-}"
 case "$cmd" in
   up)
     hosts_keycloak
-    ensure_sigma_pg_compose
+    prepare_sigma_pg_layout
     ensure_sigma_dev_network
     "${COMPOSE[@]}" up -d --build
     ;;
   down)
+    prepare_sigma_pg_layout
     "${COMPOSE[@]}" down -v
     ;;
   build)
