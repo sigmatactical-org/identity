@@ -30,8 +30,8 @@ use tracing::{debug, error, warn};
 
 use crate::{
     auth::{
-        AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens, auth_routes,
-        register_routes,
+        AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens,
+        auth_routes, register_routes,
     },
     config,
     monitoring::health_routes,
@@ -422,16 +422,26 @@ fn security_headers(router: Router) -> Router {
     router
 }
 
+pub(crate) struct AppBuildOptions {
+    pub remaining_secs_threshold: u64,
+    pub app_config: AppConfigurationState,
+    pub registration: Option<RegistrationDeps>,
+    pub profile: Option<ProfileDeps>,
+}
+
 pub(crate) fn app<S: SessionStore + Clone + 'static>(
     oidc_client: OIDCClient,
     session_layer: &SessionManagerLayer<S, PrivateCookie>,
     proxy_config: &ProxyConfig,
     pool: PgPool,
-    remaining_secs_threshold: u64,
-    app_config: AppConfigurationState,
-    registration: Option<RegistrationDeps>,
-    profile: Option<ProfileDeps>,
+    options: AppBuildOptions,
 ) -> Result<Router> {
+    let AppBuildOptions {
+        remaining_secs_threshold,
+        app_config,
+        registration,
+        profile,
+    } = options;
     let files_root = config::files_dir();
     let files_root_path = Path::new(&files_root);
     let spa_apps = walk_dir(&files_root)?;

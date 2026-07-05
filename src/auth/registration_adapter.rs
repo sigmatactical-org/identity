@@ -4,7 +4,6 @@ use super::keycloak_admin::{CreatedUser, KeycloakAdmin};
 
 /// Context passed to registration adapters after a Keycloak user is created.
 pub(crate) struct RegistrationContext {
-    pub return_url: String,
     pub verification_redirect_uri: String,
 }
 
@@ -84,7 +83,10 @@ pub(crate) enum RegistrationAdapter {
 impl RegistrationAdapter {
     #[must_use]
     pub fn from_env() -> Self {
-        Self::for_mode(crate::config::is_production(), crate::config::registration_mode())
+        Self::for_mode(
+            crate::config::is_production(),
+            crate::config::registration_mode(),
+        )
     }
 
     #[must_use]

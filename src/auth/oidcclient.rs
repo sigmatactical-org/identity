@@ -9,9 +9,10 @@ use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
 use oauth2::{AuthType, EndpointMaybeSet, EndpointNotSet, EndpointSet, basic::BasicTokenType};
 use openidconnect::{
     AccessTokenHash, AuthUrl, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret,
-    CsrfToken, EmptyAdditionalClaims, EmptyExtraTokenFields, IdTokenFields, IssuerUrl, JsonWebKeySetUrl, Nonce,
-    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope,
-    SignatureVerificationError, StandardTokenResponse, TokenResponse, TokenUrl,
+    CsrfToken, EmptyAdditionalClaims, EmptyExtraTokenFields, IdTokenFields, IssuerUrl,
+    JsonWebKeySetUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
+    RefreshToken, Scope, SignatureVerificationError, StandardTokenResponse, TokenResponse,
+    TokenUrl,
     core::{
         CoreAuthenticationFlow, CoreClient, CoreGenderClaim, CoreIdToken, CoreIdTokenClaims,
         CoreIdTokenVerifier, CoreJsonWebKeySet, CoreJweContentEncryptionAlgorithm,
@@ -335,8 +336,9 @@ impl OIDCClient {
         if let Some(token_endpoint_url) = &self.token_endpoint_override {
             trace!("Setting token endpoint to {token_endpoint_url}");
             metadata = metadata.set_token_endpoint(Some(
-                TokenUrl::new(token_endpoint_url.clone())
-                    .with_context(|| format!("Token endpoint is not valid: {token_endpoint_url}"))?,
+                TokenUrl::new(token_endpoint_url.clone()).with_context(|| {
+                    format!("Token endpoint is not valid: {token_endpoint_url}")
+                })?,
             ));
         }
         if let Some(jwks_uri_url) = &self.jwks_uri_override {
@@ -346,7 +348,10 @@ impl OIDCClient {
                     .with_context(|| format!("JWKS URI is not valid: {jwks_uri_url}"))?,
             );
         }
-        trace!("Setting issuer for ID token validation to {}", self.issuer_url);
+        trace!(
+            "Setting issuer for ID token validation to {}",
+            self.issuer_url
+        );
         metadata = metadata.set_issuer(
             IssuerUrl::new(self.issuer_url.clone())
                 .context("Configured issuer URL is not valid")?,
@@ -376,6 +381,7 @@ impl OIDCClient {
         )
     }
 
+    #[allow(dead_code)]
     fn id_token_verifier_for_issuer(
         &self,
         issuer: IssuerUrl,
@@ -389,6 +395,7 @@ impl OIDCClient {
         )
     }
 
+    #[allow(dead_code)]
     async fn verify_backchannel_id_token(
         &self,
         inner: &OidcInner,
@@ -733,6 +740,7 @@ impl OIDCClient {
     }
 
     /// Resource-owner password grant for post-registration sign-in (dev / trusted server path only).
+    #[allow(dead_code)]
     pub(crate) async fn exchange_password(
         &self,
         username: &str,

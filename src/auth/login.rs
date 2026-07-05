@@ -1,4 +1,5 @@
 use anyhow::Result;
+use axum::http::HeaderValue;
 use axum::{
     Extension,
     extract::{Query, State},
@@ -6,14 +7,14 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use axum_macros::debug_handler;
-use axum::http::HeaderValue;
 use serde::Deserialize;
 use tower_sessions::Session;
 use tracing::{debug, error, trace};
 
 use crate::{
     auth::{
-        LoginCallbackSessionParameters, allowlist::{UriAllowlist, browser_origins_from_entries},
+        LoginCallbackSessionParameters,
+        allowlist::{UriAllowlist, browser_origins_from_entries},
         oidcclient::AuthorizeRequestData,
         random_alphanumeric_string,
     },

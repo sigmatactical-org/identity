@@ -4,12 +4,12 @@ mod conformance;
 mod csrftoken;
 mod keycloak_admin;
 mod login;
-mod registration_adapter;
 mod logout;
 mod oidcclient;
 mod profile;
 mod refresh;
 mod register;
+mod registration_adapter;
 mod status;
 
 use std::time::SystemTime;
@@ -18,18 +18,18 @@ pub use login::LoginAppSettings;
 pub use logout::LogoutAppSettings;
 pub use logout::LogoutBehavior;
 pub use oidcclient::OIDCClient;
-pub use register::{RegistrationAppSettings, RegistrationDeps};
 pub(crate) use profile::ProfileDeps;
+pub use register::{RegistrationAppSettings, RegistrationDeps};
 pub(crate) use registration_adapter::RegistrationAdapter;
 
 pub(crate) use keycloak_admin::KeycloakAdmin;
 
+use axum::http::Method;
 use axum::{
     Extension, Router,
     extract::FromRef,
     routing::{get, post},
 };
-use axum::http::Method;
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -45,9 +45,9 @@ use self::{
     csrftoken::csrftoken,
     login::login,
     logout::{logout, logout_callback},
+    profile::{profile_form, profile_submit},
     refresh::{RefreshLockManager, refresh},
     register::{register_form, register_submit, register_success, register_verified},
-    profile::{profile_form, profile_submit},
     status::status,
 };
 
@@ -307,7 +307,9 @@ pub(crate) fn profile_routes<S: SessionStore + Clone + 'static>(
     Router::new()
         .route(
             "/profile",
-            get(profile_form).post(profile_submit).layer(Extension(keycloak_admin)),
+            get(profile_form)
+                .post(profile_submit)
+                .layer(Extension(keycloak_admin)),
         )
         .layer(session_layer.clone())
         .with_state(profile_settings)
@@ -335,9 +337,9 @@ mod tests {
     use once_cell::sync::Lazy;
     use openidconnect::{
         AccessToken, Audience, AuthUrl, EmptyAdditionalClaims, EmptyAdditionalProviderMetadata,
-        EmptyExtraTokenFields, EndUserEmail, EndUserPreferredUsername, IdToken, IssuerUrl, JsonWebKeyId, JsonWebKeySetUrl,
-        Nonce, PrivateSigningKey, RefreshToken, ResponseTypes, Scope, StandardClaims,
-        SubjectIdentifier, TokenUrl, UserInfoUrl,
+        EmptyExtraTokenFields, EndUserEmail, EndUserUsername, IdToken, IssuerUrl, JsonWebKeyId,
+        JsonWebKeySetUrl, Nonce, PrivateSigningKey, RefreshToken, ResponseTypes, Scope,
+        StandardClaims, SubjectIdentifier, TokenUrl, UserInfoUrl,
         core::{
             CoreClaimName, CoreIdToken, CoreIdTokenClaims, CoreIdTokenFields, CoreJsonWebKeySet,
             CoreJwsSigningAlgorithm, CoreProviderMetadata, CoreResponseType,
@@ -501,9 +503,7 @@ mod tests {
                 // Optional: specify the user's e-mail address. This should only be provided if the
                 // client has been granted the 'profile' or 'email' scopes.
                 .set_email(Some(EndUserEmail::new("bob@example.com".to_string())))
-                .set_preferred_username(Some(EndUserPreferredUsername::new(
-                    "bob".to_string(),
-                )))
+                .set_preferred_username(Some(EndUserUsername::new("bob".to_string())))
                 // Optional: specify whether the provider has verified the user's e-mail address.
                 .set_email_verified(Some(true)),
                 // OpenID Connect Providers may supply custom claims by providing a struct that
@@ -593,18 +593,17 @@ mod tests {
                 .mount(&mock_server)
                 .await;
             let auth_url = format!("{}/authorize", mock_server.uri());
-            let oidc_client =
-                OIDCClient::build(
-                    &issuer_url,
-                    &client_id,
-                    &client_secret,
-                    Some(auth_url),
-                    None,
-                    None,
-                    None,
-                )
-                    .await
-                    .expect("OIDCClient creation failed");
+            let oidc_client = OIDCClient::build(
+                &issuer_url,
+                &client_id,
+                &client_secret,
+                Some(auth_url),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("OIDCClient creation failed");
 
             let session_secret: String = random_alphanumeric_string(64);
             let database_url = crate::config::var_optional("TEST_DATABASE_URL")

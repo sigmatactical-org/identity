@@ -168,10 +168,7 @@ pub fn registration_mode() -> RegistrationMode {
     if is_production() {
         return RegistrationMode::VerifyEmail;
     }
-    match var_optional("REGISTRATION_MODE")
-        .as_deref()
-        .map(str::trim)
-    {
+    match var_optional("REGISTRATION_MODE").as_deref().map(str::trim) {
         Some("verify_email" | "email" | "verification") => RegistrationMode::VerifyEmail,
         Some("auto_approve" | "approve" | "auto") => RegistrationMode::AutoApprove,
         _ => RegistrationMode::AutoApprove,

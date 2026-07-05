@@ -15,9 +15,7 @@ use crate::templates;
 use super::{
     allowlist::UriAllowlist,
     keycloak_admin::KeycloakAdmin,
-    registration_adapter::{
-        RegistrationAdapter, RegistrationContext, RegistrationOutcome,
-    },
+    registration_adapter::{RegistrationAdapter, RegistrationContext, RegistrationOutcome},
 };
 
 #[derive(Clone)]
@@ -129,10 +127,13 @@ pub(crate) async fn register_verified(
 
     let return_url = match params.return_url.filter(|value| !value.trim().is_empty()) {
         Some(return_url) => return_url,
-        None => keycloak.registration_return_url(user_id.trim()).await.map_err(|error| {
-            error!("Failed to load registration return URL: {:?}", error);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Activation failed").into_response()
-        })?,
+        None => keycloak
+            .registration_return_url(user_id.trim())
+            .await
+            .map_err(|error| {
+                error!("Failed to load registration return URL: {:?}", error);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Activation failed").into_response()
+            })?,
     };
 
     if !settings.is_return_url_allowed(&return_url) {
@@ -191,7 +192,6 @@ pub(crate) async fn register_submit(
     {
         Ok(created) => {
             let context = RegistrationContext {
-                return_url: form.return_url.clone(),
                 verification_redirect_uri: verification_redirect_uri(&created.id),
             };
             match adapter
@@ -203,10 +203,10 @@ pub(crate) async fn register_submit(
                     true,
                 ))
                 .into_response()),
-                Ok(RegistrationOutcome::PendingEmailVerification) => {
-                    Ok(Redirect::to(&register_success_location(&form.return_url, false))
-                        .into_response())
-                }
+                Ok(RegistrationOutcome::PendingEmailVerification) => Ok(Redirect::to(
+                    &register_success_location(&form.return_url, false),
+                )
+                .into_response()),
                 Err(finalize_error) => {
                     error!(
                         "Registration finalization failed after user create: {:?}",
@@ -218,7 +218,7 @@ pub(crate) async fn register_submit(
                             delete_error
                         );
                     }
-                    return render_register_page(RegisterPage {
+                    render_register_page(RegisterPage {
                         return_url: form.return_url,
                         email: form.email,
                         username: form.username,
@@ -227,7 +227,7 @@ pub(crate) async fn register_submit(
                         error: Some(finalization_error_message(&finalize_error)),
                     })
                     .map(|html| html.into_response())
-                    .map_err(|error| *error);
+                    .map_err(|error| *error)
                 }
             }
         }
@@ -382,10 +382,7 @@ mod tests {
     #[test]
     fn verification_redirect_uses_path_for_user_id() {
         let url = verification_redirect_uri("user-123");
-        assert_eq!(
-            url,
-            "http://127.0.0.1:3000/register/verified/user-123"
-        );
+        assert_eq!(url, "http://127.0.0.1:3000/register/verified/user-123");
         assert!(!url.contains('?'));
     }
 }

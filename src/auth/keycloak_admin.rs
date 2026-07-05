@@ -49,7 +49,7 @@ struct TokenResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct UserRepresentation {
+pub(crate) struct UserRepresentation {
     username: Option<String>,
     email: Option<String>,
     first_name: Option<String>,

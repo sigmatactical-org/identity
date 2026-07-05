@@ -48,11 +48,7 @@ struct ProfilePage {
 }
 
 async fn session_tokens(session: &Session) -> Option<SessionTokens> {
-    session
-        .get(SESSION_KEY_JWT)
-        .await
-        .ok()
-        .flatten()
+    session.get(SESSION_KEY_JWT).await.ok().flatten()
 }
 
 fn profile_page_url(return_url: &str) -> String {
@@ -72,7 +68,8 @@ fn login_redirect(return_url: &str) -> Redirect {
     let public_base = config::public_base_url();
     let identity_base = public_base.trim_end_matches('/');
     let callback = format!("{identity_base}/auth/callback");
-    let mut login_url = Url::parse(&format!("{identity_base}/auth/login")).expect("valid login path");
+    let mut login_url =
+        Url::parse(&format!("{identity_base}/auth/login")).expect("valid login path");
     {
         let mut pairs = login_url.query_pairs_mut();
         pairs.append_pair("app_uri", &profile_url);
@@ -92,7 +89,7 @@ fn validate_form(form: &ProfileForm) -> Option<String> {
     None
 }
 
-fn render_profile_page(page: ProfilePage) -> Result<Html<String>, Response> {
+fn render_profile_page(page: ProfilePage) -> Result<Html<String>, Box<Response>> {
     templates::render_profile_html(
         &page.return_url,
         &page.username,
@@ -105,7 +102,7 @@ fn render_profile_page(page: ProfilePage) -> Result<Html<String>, Response> {
     .map(Html)
     .map_err(|error| {
         error!("Failed to render profile page: {error}");
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response()
+        Box::new((StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").into_response())
     })
 }
 
@@ -141,6 +138,7 @@ pub(crate) async fn profile_form(
         error: None,
         saved: false,
     })
+    .map_err(|error| *error)
 }
 
 #[debug_handler]
@@ -171,7 +169,8 @@ pub(crate) async fn profile_submit(
             error: Some(message),
             saved: false,
         })
-        .map(IntoResponse::into_response);
+        .map(|html| html.into_response())
+        .map_err(|error| *error);
     }
 
     admin
@@ -194,7 +193,8 @@ pub(crate) async fn profile_submit(
                 error: Some("Unable to save profile changes. Try again.".into()),
                 saved: false,
             })
-            .map(IntoResponse::into_response)
+            .map(|html| html.into_response())
+            .map_err(|render_error| *render_error)
             .unwrap_err()
         })?;
 
@@ -211,7 +211,8 @@ pub(crate) async fn profile_submit(
         error: None,
         saved: true,
     })
-    .map(IntoResponse::into_response)
+    .map(|html| html.into_response())
+    .map_err(|error| *error)
 }
 
 #[cfg(test)]

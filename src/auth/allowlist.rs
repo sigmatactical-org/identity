@@ -1,5 +1,5 @@
-use tracing::debug;
 use axum::http::HeaderValue;
+use tracing::debug;
 
 /// Exact-match and trailing-wildcard (`*`) URI allowlist.
 #[derive(Clone, Debug)]
@@ -77,13 +77,7 @@ mod tests {
             "http://identity.example/".to_string(),
         ]);
         assert_eq!(origins.len(), 2);
-        assert_eq!(
-            origins[0].to_str().unwrap(),
-            "http://identity.example"
-        );
-        assert_eq!(
-            origins[1].to_str().unwrap(),
-            "http://store.example:30080"
-        );
+        assert_eq!(origins[0].to_str().unwrap(), "http://identity.example");
+        assert_eq!(origins[1].to_str().unwrap(), "http://store.example:30080");
     }
 }

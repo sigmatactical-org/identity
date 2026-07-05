@@ -220,9 +220,8 @@ mod tests {
 
     #[test]
     fn register_verified_shows_activation_state() {
-        let html =
-            render_register_verified_html("http://localhost:3000/exampleapp/", true)
-                .expect("register verified template");
+        let html = render_register_verified_html("http://localhost:3000/exampleapp/", true)
+            .expect("register verified template");
         assert!(html.contains("Account activated"));
         assert!(html.contains("Continue"));
     }
