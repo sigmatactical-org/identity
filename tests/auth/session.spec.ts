@@ -31,10 +31,10 @@ test.describe("auth status", () => {
   test("reports authenticated after OIDC login", async ({ page, request }) => {
     const conf = await configuration();
     await page.goto(`${conf.baseUrl}/exampleapp/`);
-    await Promise.all([
-      page.waitForURL(/\/auth\/login|keycloak|8101/),
-      page.getByRole("button", { name: "Login" }).click(),
-    ]);
+    await page.getByRole("button", { name: "Login" }).click();
+    await page.getByRole("textbox", { name: "Username or email" }).waitFor({
+      timeout: 15_000,
+    });
     await page.getByRole("textbox", { name: "Username or email" }).fill("user1");
     await page.getByRole("textbox", { name: "Password" }).fill("user1");
     await page.getByRole("button", { name: "Sign In" }).click();

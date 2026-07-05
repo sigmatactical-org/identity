@@ -11,7 +11,11 @@ test.describe("example app login", () => {
     await expect(page.getByText("not authenticated")).toBeVisible();
 
     await Promise.all([
-      page.waitForURL(/\/auth\/login|keycloak|8101/),
+      page.waitForResponse(
+        (response) =>
+          response.url().includes("/auth/login") &&
+          (response.status() === 303 || response.status() === 302),
+      ),
       page.getByRole("button", { name: "Login" }).click(),
     ]);
     const cookies = await context.cookies();

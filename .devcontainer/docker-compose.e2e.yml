@@ -25,6 +25,8 @@ services:
           - keycloak.localhost
   identity:
     ports: !reset []
+    extra_hosts:
+      - "keycloak.localhost:host-gateway"
     networks:
       - default
       - sigma-dev
