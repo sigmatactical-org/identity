@@ -150,9 +150,7 @@ case "$cmd" in
   wait)
     for _ in $(seq 1 90); do
       if curl -skf https://localhost:3000/app/up >/dev/null \
-        && curl -skf https://keycloak.localhost:8101/realms/multcorp/.well-known/openid-configuration >/dev/null \
-        && "${COMPOSE[@]}" exec -T identity bash -lc \
-          'curl -skf https://keycloak.localhost:8101/realms/multcorp/.well-known/openid-configuration >/dev/null'; then
+        && curl -skf https://keycloak.localhost:8101/realms/multcorp/.well-known/openid-configuration >/dev/null; then
         echo "identity and keycloak ready"
         exit 0
       fi
