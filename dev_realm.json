@@ -408,43 +408,7 @@
   "webAuthnPolicyPasswordlessCreateTimeout" : 0,
   "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister" : false,
   "webAuthnPolicyPasswordlessAcceptableAaguids" : [ ],
-  "users" : [ {
-    "id" : "cfee6d26-05f9-4ff9-ae46-4199a389076e",
-    "createdTimestamp" : 1637931174620,
-    "username" : "service-account-identity",
-    "enabled" : true,
-    "totp" : false,
-    "emailVerified" : false,
-    "serviceAccountClientId" : "identity",
-    "credentials" : [ ],
-    "disableableCredentialTypes" : [ ],
-    "requiredActions" : [ ],
-    "realmRoles" : [ "default-roles-multcorp" ],
-    "clientRoles" : {
-      "realm-management" : [ "manage-users" ]
-    },
-    "notBefore" : 0,
-    "groups" : [ ]
-  }, {
-    "id" : "a1252faa-072f-4db0-a345-35228f8b04ad",
-    "createdTimestamp" : 1639752023985,
-    "username" : "user1",
-    "enabled" : true,
-    "totp" : false,
-    "emailVerified" : false,
-    "credentials" : [ {
-      "id" : "98006f87-0c1b-4a61-8242-17f609a8f98b",
-      "type" : "password",
-      "createdDate" : 1639752031688,
-      "secretData" : "{\"value\":\"7QLp5j3pGk0jpoZunD1ihGqurIGJZ5c0IymrL3C8+YY=\",\"salt\":\"7vP+wKftaWlFgViKk8ok2A==\",\"additionalParameters\":{}}",
-      "credentialData" : "{\"hashIterations\":27500,\"algorithm\":\"pbkdf2-sha256\",\"additionalParameters\":{}}"
-    } ],
-    "disableableCredentialTypes" : [ ],
-    "requiredActions" : [ ],
-    "realmRoles" : [ "default-roles-multcorp", "sigma-admin" ],
-    "notBefore" : 0,
-    "groups" : [ "/Group1", "/Group2" ]
-  } ],
+  "users" : [ ],
   "scopeMappings" : [ {
     "clientScope" : "offline_access",
     "roles" : [ "offline_access" ]

@@ -80,7 +80,7 @@ sigma-identity is a stateless BFF except for **PostgreSQL sessions**. It does no
 cargo run
 ```
 
-Open http://localhost:3000/exampleapp/ — login via Keycloak (`user1` / `user1` in dev realm).
+Open http://localhost:3000/exampleapp/ — login via Keycloak. Run `platform/scripts/seed-keycloak-dev-users.sh` first; credentials are in `platform/.env.dev-seed` (private repo).
 
 Stop dependencies: `./scripts/dev-stack.sh down`
 
