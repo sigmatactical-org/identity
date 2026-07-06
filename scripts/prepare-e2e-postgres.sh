@@ -14,10 +14,9 @@ export PGPASSWORD
 
 psql_base=(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -v ON_ERROR_STOP=1)
 
-echo "Ensuring keycloak database exists..."
-if ! "${psql_base[@]}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1; then
-  "${psql_base[@]}" -d postgres -c "CREATE DATABASE keycloak OWNER sigma;"
-fi
+echo "Ensuring keycloak schema exists in database sigma..."
+"${psql_base[@]}" -d sigma -c "CREATE SCHEMA IF NOT EXISTS keycloak;"
+"${psql_base[@]}" -d sigma -c "GRANT ALL ON SCHEMA keycloak TO sigma;"
 
 pg_dir="$(sigma_pg_dir)"
 echo "Running sigma-pg migrations from $pg_dir..."
