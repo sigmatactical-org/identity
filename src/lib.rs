@@ -7,9 +7,9 @@ use tracing::{debug, warn};
 
 use crate::{
     auth::{
-        AppConfigurationState, KeycloakAdmin, LoginAppSettings, LogoutAppSettings, LogoutBehavior,
-        OIDCClient, ProfileDeps, RegistrationAdapter, RegistrationAppSettings, RegistrationDeps,
-        allowlist::UriAllowlist,
+        AdminDeps, AppConfigurationState, KeycloakAdmin, LoginAppSettings, LogoutAppSettings,
+        LogoutBehavior, OIDCClient, ProfileDeps, RegistrationAdapter, RegistrationAppSettings,
+        RegistrationDeps, allowlist::UriAllowlist,
     },
     config::validate_session_secret,
     http::{ProxyConfig, app},
@@ -18,6 +18,7 @@ use crate::{
 
 mod auth;
 mod config;
+mod geo;
 mod http;
 mod monitoring;
 mod session;
@@ -166,10 +167,12 @@ pub async fn run() -> anyhow::Result<()> {
         None
     };
 
-    let profile = keycloak_admin.map(|admin| ProfileDeps {
-        settings: profile_settings,
-        admin,
+    let profile = keycloak_admin.as_ref().map(|admin| ProfileDeps {
+        settings: profile_settings.clone(),
+        admin: admin.clone(),
     });
+
+    let admin = keycloak_admin.map(|admin| AdminDeps { admin });
 
     let app = app(
         oidc_client,
@@ -181,6 +184,7 @@ pub async fn run() -> anyhow::Result<()> {
             app_config,
             registration,
             profile,
+            admin,
         },
     );
 

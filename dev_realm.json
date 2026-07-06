@@ -77,6 +77,14 @@
       "clientRole" : false,
       "containerId" : "multcorp",
       "attributes" : { }
+    }, {
+      "id" : "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name" : "sigma-admin",
+      "description" : "Sigma identity admin UI access",
+      "composite" : false,
+      "clientRole" : false,
+      "containerId" : "multcorp",
+      "attributes" : { }
     } ],
     "client" : {
       "realm-management" : [ {
@@ -433,7 +441,7 @@
     } ],
     "disableableCredentialTypes" : [ ],
     "requiredActions" : [ ],
-    "realmRoles" : [ "default-roles-multcorp" ],
+    "realmRoles" : [ "default-roles-multcorp", "sigma-admin" ],
     "notBefore" : 0,
     "groups" : [ "/Group1", "/Group2" ]
   } ],

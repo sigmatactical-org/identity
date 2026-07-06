@@ -50,13 +50,28 @@ struct TokenResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UserRepresentation {
-    username: Option<String>,
-    email: Option<String>,
-    first_name: Option<String>,
-    last_name: Option<String>,
-    enabled: bool,
-    email_verified: bool,
-    attributes: Option<HashMap<String, Vec<String>>>,
+    pub(crate) username: Option<String>,
+    pub(crate) email: Option<String>,
+    pub(crate) first_name: Option<String>,
+    pub(crate) last_name: Option<String>,
+    pub(crate) enabled: bool,
+    pub(crate) email_verified: bool,
+    pub(crate) created_timestamp: Option<i64>,
+    pub(crate) attributes: Option<HashMap<String, Vec<String>>>,
+}
+
+/// Summary row for the admin user list (`GET /admin/realms/.../users`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UserSummary {
+    pub id: String,
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub enabled: bool,
+    pub email_verified: bool,
+    pub created_timestamp: Option<i64>,
 }
 
 // Keycloak custom user-profile attribute keys. These must also be declared in
@@ -496,6 +511,81 @@ impl KeycloakAdmin {
             self.set_user_enabled(user_id, true).await?;
         }
         Ok(true)
+    }
+
+    pub(crate) async fn list_users(
+        &self,
+        search: Option<&str>,
+        first: u32,
+        max: u32,
+    ) -> Result<Vec<UserSummary>> {
+        let token = self.access_token().await?;
+        let url = format!(
+            "{}/admin/realms/{}/users",
+            self.server_base.trim_end_matches('/'),
+            self.realm
+        );
+        let mut request = self
+            .http_client
+            .get(&url)
+            .query(&[("first", first.to_string()), ("max", max.to_string())])
+            .bearer_auth(&token);
+        if let Some(query) = search.filter(|value| !value.trim().is_empty()) {
+            request = request.query(&[("search", query.trim())]);
+        }
+        let response = request
+            .send()
+            .await
+            .context("Keycloak list users request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            bail!("Keycloak list users failed with HTTP {status}: {body}");
+        }
+
+        let body = response
+            .text()
+            .await
+            .context("Failed to read Keycloak list users response")?;
+        serde_json::from_str(&body).context("Failed to parse Keycloak list users response")
+    }
+
+    /// Email the user a link to choose a new password (Keycloak `UPDATE_PASSWORD`).
+    pub(crate) async fn send_password_reset_email(&self, user_id: &str) -> Result<()> {
+        let token = self.access_token().await?;
+        let redirect_uri = format!(
+            "{}/profile",
+            config::public_base_url().trim_end_matches('/')
+        );
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/execute-actions-email",
+            self.server_base.trim_end_matches('/'),
+            self.realm,
+            user_id
+        );
+        let response = self
+            .http_client
+            .put(&url)
+            .query(&[
+                ("client_id", self.client_id.as_str()),
+                ("redirect_uri", redirect_uri.as_str()),
+                ("lifespan", "86400"),
+            ])
+            .header("Content-Type", "application/json")
+            .bearer_auth(&token)
+            .body(r#"["UPDATE_PASSWORD"]"#)
+            .send()
+            .await
+            .context("Keycloak password reset email request failed")?;
+
+        if response.status().is_success() {
+            return Ok(());
+        }
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        bail!("Keycloak password reset email failed with HTTP {status}: {body}")
     }
 
     async fn access_token(&self) -> Result<String> {

@@ -120,20 +120,6 @@
           />
         </div>
         <div class="col-md-6 mb-3">
-          <label for="region" class="form-label">State / region</label>
-          <input
-            class="form-control"
-            type="text"
-            id="region"
-            name="region"
-            value="{{ region }}"
-            autocomplete="address-level1"
-          />
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="col-md-6 mb-3">
           <label for="postal_code" class="form-label">Postal code</label>
           <input
             class="form-control"
@@ -144,16 +130,36 @@
             autocomplete="postal-code"
           />
         </div>
+      </div>
+
+      <div class="row">
         <div class="col-md-6 mb-3">
-          <label for="country" class="form-label">Country</label>
-          <input
-            class="form-control"
-            type="text"
-            id="country"
+          <label for="address-country" class="form-label">Country</label>
+          <select
+            class="form-select"
+            id="address-country"
             name="country"
-            value="{{ country }}"
             autocomplete="country-name"
-          />
+          >
+            <option value="">Select a country…</option>
+            {% for c in countries %}
+            <option value="{{ c.name }}"{% if c.selected %} selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label">State / province / region</label>
+          <div id="address-region-field" data-initial-region="{{ region }}">
+            <input
+              class="form-control"
+              type="text"
+              id="address-region"
+              name="region"
+              autocomplete="address-level1"
+              placeholder="State / province / region"
+              value="{{ region }}"
+            />
+          </div>
         </div>
       </div>
 
@@ -176,4 +182,8 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/address-select.js" defer></script>
 {% endblock %}

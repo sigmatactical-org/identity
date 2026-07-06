@@ -46,7 +46,7 @@ keycloak_theme_marker() {
 }
 
 prepare_theme_layout() {
-  # docker-compose mounts ../../theme from .devcontainer (monorepo: sigma/theme).
+  # docker-compose mounts ../../theme from .devcontainer (monorepo: it/theme).
   # CI checks out sigma-theme at identity/theme; symlink parent ../theme for compose.
   local compose_theme expected
   compose_theme="$(cd "$ROOT/.devcontainer/../.." && pwd)/theme"

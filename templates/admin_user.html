@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}{{ username }} — Sigma Identity Admin{% endblock %}
+
+{% block brand %}Sigma Identity Admin{% endblock %}
+
+{% block main_class %}app-main{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="register-card">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+      <div>
+        <h1 class="mb-1">{{ username }}</h1>
+        <p class="lead mb-0">User account details and admin actions.</p>
+      </div>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/users">Back to users</a>
+    </div>
+
+    {% if notice != "" %}
+    <div class="alert alert-success" role="alert">{{ notice }}</div>
+    {% endif %}
+
+    <dl class="row profile-details mb-4">
+      {% for row in rows %}
+      <dt class="col-sm-4 text-secondary fw-normal">{{ row.label }}</dt>
+      <dd class="col-sm-8">
+        {% if row.value != "Unfilled" %}{{ row.value }}{% else %}<span class="text-secondary fst-italic">Unfilled</span>{% endif %}
+      </dd>
+      {% endfor %}
+    </dl>
+
+    <div class="d-flex flex-wrap gap-2">
+      {% if !enabled || !email_verified %}
+      <form method="post" action="/admin/users/{{ user_id }}/approve">
+        <button type="submit" class="btn btn-primary">Approve account</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/admin/users/{{ user_id }}/reset-password">
+        <button type="submit" class="btn btn-outline-secondary">Send password reset email</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

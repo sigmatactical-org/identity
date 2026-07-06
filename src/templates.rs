@@ -59,10 +59,16 @@ pub struct ProfileFields {
     pub company: String,
 }
 
-/// A single label/value pair for the read-only profile view.
-struct ProfileViewRow {
-    label: String,
-    value: String,
+/// A single label/value pair for read-only profile and admin detail views.
+pub(crate) struct ProfileViewRow {
+    pub label: String,
+    pub value: String,
+}
+
+/// A country `<option>` for the edit form's country dropdown.
+struct CountryOption {
+    name: String,
+    selected: bool,
 }
 
 #[derive(Template)]
@@ -90,11 +96,45 @@ struct ProfileEditTemplate {
     phone: String,
     street: String,
     city: String,
-    region: String,
     postal_code: String,
-    country: String,
     birthdate: String,
     company: String,
+    countries: Vec<CountryOption>,
+    region: String,
+}
+
+pub(crate) struct AdminUserRow {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+    pub name: String,
+    pub enabled: bool,
+    pub email_verified: bool,
+    pub created: String,
+}
+
+#[derive(Template)]
+#[template(path = "admin_users.html")]
+struct AdminUsersTemplate {
+    copyright_years: String,
+    search: String,
+    has_prev: bool,
+    has_next: bool,
+    prev_page: u32,
+    next_page: u32,
+    users: Vec<AdminUserRow>,
+}
+
+#[derive(Template)]
+#[template(path = "admin_user.html")]
+struct AdminUserTemplate {
+    copyright_years: String,
+    user_id: String,
+    username: String,
+    enabled: bool,
+    email_verified: bool,
+    notice: String,
+    rows: Vec<ProfileViewRow>,
 }
 
 /// # Errors
@@ -226,6 +266,13 @@ pub fn render_profile_html(
     fields: &ProfileFields,
     error: Option<&str>,
 ) -> Result<String, askama::Error> {
+    let countries = crate::geo::COUNTRIES
+        .iter()
+        .map(|(_code, name)| CountryOption {
+            name: (*name).to_string(),
+            selected: name.eq_ignore_ascii_case(&fields.country),
+        })
+        .collect();
     ProfileEditTemplate {
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
@@ -238,11 +285,60 @@ pub fn render_profile_html(
         phone: fields.phone.clone(),
         street: fields.street.clone(),
         city: fields.city.clone(),
-        region: fields.region.clone(),
         postal_code: fields.postal_code.clone(),
-        country: fields.country.clone(),
         birthdate: fields.birthdate.clone(),
         company: fields.company.clone(),
+        countries,
+        region: fields.region.clone(),
+    }
+    .render()
+}
+
+/// Render the admin user list page.
+///
+/// # Errors
+///
+/// Returns [`askama::Error`] when template rendering fails.
+pub fn render_admin_users_html(
+    search: &str,
+    page: u32,
+    has_prev: bool,
+    has_next: bool,
+    users: Vec<AdminUserRow>,
+) -> Result<String, askama::Error> {
+    AdminUsersTemplate {
+        copyright_years: copyright_years(),
+        search: search.to_string(),
+        has_prev,
+        has_next,
+        prev_page: page.saturating_sub(1),
+        next_page: page + 1,
+        users,
+    }
+    .render()
+}
+
+/// Render the admin user detail page.
+///
+/// # Errors
+///
+/// Returns [`askama::Error`] when template rendering fails.
+pub fn render_admin_user_html(
+    user_id: &str,
+    username: String,
+    enabled: bool,
+    email_verified: bool,
+    notice: Option<&str>,
+    rows: Vec<ProfileViewRow>,
+) -> Result<String, askama::Error> {
+    AdminUserTemplate {
+        copyright_years: copyright_years(),
+        user_id: user_id.to_string(),
+        username,
+        enabled,
+        email_verified,
+        notice: notice.unwrap_or_default().to_string(),
+        rows,
     }
     .render()
 }
@@ -343,6 +439,28 @@ mod tests {
         assert!(html.contains("value=\"bob@example.com\""));
         assert!(html.contains("name=\"phone\""));
         assert!(html.contains("name=\"company\""));
+        assert!(html.contains("id=\"address-country\""));
+        assert!(html.contains("id=\"address-region-field\""));
+        assert!(html.contains("address-select.js"));
+        assert!(html.contains("data-initial-region"));
+    }
+
+    #[test]
+    fn profile_edit_preserves_region_value_for_js() {
+        let fields = ProfileFields {
+            country: "United States".into(),
+            region: "California".into(),
+            ..ProfileFields::default()
+        };
+        let html = render_profile_html(
+            "http://localhost:3000/exampleapp/",
+            "http://localhost:3000/profile",
+            &fields,
+            None,
+        )
+        .expect("profile edit template");
+        assert!(html.contains("data-initial-region=\"California\""));
+        assert!(html.contains("value=\"United States\" selected"));
     }
 
     #[test]

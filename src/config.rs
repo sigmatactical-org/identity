@@ -196,3 +196,15 @@ pub fn registration_return_uris() -> Result<Vec<String>> {
         .filter(|entry| !entry.is_empty())
         .collect())
 }
+
+/// Realm roles that grant access to `/admin/*` (comma-separated). Defaults to
+/// `sigma-admin`.
+pub fn admin_realm_roles() -> Vec<String> {
+    var_optional("ADMIN_REALM_ROLES")
+        .unwrap_or_else(|| "sigma-admin".to_string())
+        .split(',')
+        .map(str::trim)
+        .filter(|role| !role.is_empty())
+        .map(str::to_string)
+        .collect()
+}

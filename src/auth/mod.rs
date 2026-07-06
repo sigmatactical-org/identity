@@ -1,3 +1,4 @@
+mod admin;
 pub mod allowlist;
 mod callback;
 mod conformance;
@@ -22,6 +23,7 @@ pub(crate) use profile::ProfileDeps;
 pub use register::{RegistrationAppSettings, RegistrationDeps};
 pub(crate) use registration_adapter::RegistrationAdapter;
 
+pub(crate) use admin::AdminDeps;
 pub(crate) use keycloak_admin::{KeycloakAdmin, ProfileInput};
 
 use axum::http::Method;
@@ -41,6 +43,7 @@ use openidconnect::{
 use serde::{Deserialize, Serialize};
 
 use self::{
+    admin::{admin_user_approve, admin_user_detail, admin_user_list, admin_user_reset_password},
     callback::callback,
     csrftoken::csrftoken,
     login::login,
@@ -138,6 +141,23 @@ impl SessionTokens {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string)
+    }
+
+    /// Whether the stored ID token includes any of the given realm roles.
+    pub(crate) fn has_any_realm_role(&self, roles: &[&str]) -> bool {
+        let Some(claims) = id_token_claims(&self.id_token) else {
+            return false;
+        };
+        let Some(role_values) = claims
+            .get("realm_access")
+            .and_then(|access| access.get("roles"))
+            .and_then(|value| value.as_array())
+        else {
+            return false;
+        };
+        role_values
+            .iter()
+            .any(|value| value.as_str().is_some_and(|role| roles.contains(&role)))
     }
 }
 
@@ -313,6 +333,30 @@ pub(crate) fn profile_routes<S: SessionStore + Clone + 'static>(
         )
         .layer(session_layer.clone())
         .with_state(profile_settings)
+}
+
+pub(crate) fn admin_routes<S: SessionStore + Clone + 'static>(
+    keycloak_admin: KeycloakAdmin,
+    session_layer: &SessionManagerLayer<S, PrivateCookie>,
+) -> Router {
+    Router::new()
+        .route(
+            "/admin/users",
+            get(admin_user_list).layer(Extension(keycloak_admin.clone())),
+        )
+        .route(
+            "/admin/users/{user_id}",
+            get(admin_user_detail).layer(Extension(keycloak_admin.clone())),
+        )
+        .route(
+            "/admin/users/{user_id}/approve",
+            post(admin_user_approve).layer(Extension(keycloak_admin.clone())),
+        )
+        .route(
+            "/admin/users/{user_id}/reset-password",
+            post(admin_user_reset_password).layer(Extension(keycloak_admin)),
+        )
+        .layer(session_layer.clone())
 }
 
 pub(crate) fn random_alphanumeric_string(length: usize) -> String {

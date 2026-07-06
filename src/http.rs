@@ -30,7 +30,7 @@ use tracing::{debug, error, warn};
 
 use crate::{
     auth::{
-        AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens,
+        AdminDeps, AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens,
         auth_routes, register_routes,
     },
     config,
@@ -427,6 +427,7 @@ pub(crate) struct AppBuildOptions {
     pub app_config: AppConfigurationState,
     pub registration: Option<RegistrationDeps>,
     pub profile: Option<ProfileDeps>,
+    pub admin: Option<AdminDeps>,
 }
 
 pub(crate) fn app<S: SessionStore + Clone + 'static>(
@@ -441,12 +442,14 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         app_config,
         registration,
         profile,
+        admin,
     } = options;
     let files_root = config::files_dir();
     let files_root_path = Path::new(&files_root);
     let spa_apps = walk_dir(&files_root)?;
     let register_oidc = oidc_client.clone();
     let mut app = Router::new()
+        .route("/geo/regions", get(crate::geo::regions_handler))
         .nest("/api", api_proxy(session_layer, proxy_config)?)
         .nest("/app", health_routes(pool.clone()))
         .nest(
@@ -478,6 +481,10 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
 
     if let Some(ProfileDeps { settings, admin }) = profile {
         app = app.merge(crate::auth::profile_routes(settings, admin, session_layer));
+    }
+
+    if let Some(AdminDeps { admin }) = admin {
+        app = app.merge(crate::auth::admin_routes(admin, session_layer));
     }
 
     app = mount_themed_app_assets(app, files_root_path);
