@@ -91,3 +91,9 @@ sigma-identity is a BFF (custom `/auth/login`, allowlists, PostgreSQL sessions),
 
 Last run state: `conformance/.last-run.json`  
 Bootstrap issuer: `conformance/.bootstrap-plan.json`
+
+## Copyright & branding
+
+© Sigma Tactical Group. **All rights reserved.**
+
+The **Sigma Tactical Group** name, logos, wordmarks, and site visual identity are **proprietary**. See [sigma-theme BRANDING.md](https://github.com/sigmatactical-org/sigma-theme/blob/main/BRANDING.md).

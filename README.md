@@ -186,6 +186,12 @@ git merge upstream/main
 
 Remote `upstream` points at [ErikWegner/rust-identity-service](https://github.com/ErikWegner/rust-identity-service).
 
+## Copyright & branding
+
+© Sigma Tactical Group. **All rights reserved.**
+
+The **Sigma Tactical Group** name, logos, wordmarks, and site visual identity are **proprietary**. Do not use them outside Sigma Tactical Group products or communications without written permission. See [sigma-theme BRANDING.md](https://github.com/sigmatactical-org/sigma-theme/blob/main/BRANDING.md).
+
 ## License
 
-Licensed **MIT OR Apache-2.0** (see `LICENSE-MIT` and `LICENSE-APACHE` in this directory).
+Licensed **MIT OR Apache-2.0** for **source code** only (see `LICENSE-MIT` and `LICENSE-APACHE` in this directory). Branding remains proprietary as described above.
