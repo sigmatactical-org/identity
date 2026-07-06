@@ -41,17 +41,60 @@ struct RegisterTemplate {
     error: String,
 }
 
+/// All profile field values shared by the read-only view and the edit form.
+/// Empty strings represent unfilled fields.
+#[derive(Debug, Default, Clone)]
+pub struct ProfileFields {
+    pub username: String,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub phone: String,
+    pub street: String,
+    pub city: String,
+    pub region: String,
+    pub postal_code: String,
+    pub country: String,
+    pub birthdate: String,
+    pub company: String,
+}
+
+/// A single label/value pair for the read-only profile view.
+struct ProfileViewRow {
+    label: String,
+    value: String,
+}
+
 #[derive(Template)]
 #[template(path = "profile.html")]
-struct ProfileTemplate {
+struct ProfileViewTemplate {
     copyright_years: String,
     return_url: String,
+    edit_url: String,
+    logout_url: String,
+    saved: bool,
+    rows: Vec<ProfileViewRow>,
+}
+
+#[derive(Template)]
+#[template(path = "profile_edit.html")]
+struct ProfileEditTemplate {
+    copyright_years: String,
+    return_url: String,
+    cancel_url: String,
+    error: String,
     username: String,
     email: String,
     first_name: String,
     last_name: String,
-    error: String,
-    saved: bool,
+    phone: String,
+    street: String,
+    city: String,
+    region: String,
+    postal_code: String,
+    country: String,
+    birthdate: String,
+    company: String,
 }
 
 /// # Errors
@@ -127,27 +170,79 @@ pub fn render_register_verified_html(
     .render()
 }
 
+fn profile_row(label: &str, value: &str) -> ProfileViewRow {
+    ProfileViewRow {
+        label: label.to_string(),
+        value: value.to_string(),
+    }
+}
+
+/// Render the read-only profile view listing every field ("unfilled" for
+/// empties), with Edit, Sign out, and (optionally) return-to-app actions.
+///
+/// # Errors
+///
+/// Returns [`askama::Error`] when template rendering fails.
+pub fn render_profile_view_html(
+    return_url: &str,
+    edit_url: &str,
+    logout_url: &str,
+    fields: &ProfileFields,
+    saved: bool,
+) -> Result<String, askama::Error> {
+    let rows = vec![
+        profile_row("Username", &fields.username),
+        profile_row("Email", &fields.email),
+        profile_row("First name", &fields.first_name),
+        profile_row("Last name", &fields.last_name),
+        profile_row("Phone", &fields.phone),
+        profile_row("Company", &fields.company),
+        profile_row("Street address", &fields.street),
+        profile_row("City", &fields.city),
+        profile_row("State / region", &fields.region),
+        profile_row("Postal code", &fields.postal_code),
+        profile_row("Country", &fields.country),
+        profile_row("Date of birth", &fields.birthdate),
+    ];
+    ProfileViewTemplate {
+        copyright_years: copyright_years(),
+        return_url: return_url.to_string(),
+        edit_url: edit_url.to_string(),
+        logout_url: logout_url.to_string(),
+        saved,
+        rows,
+    }
+    .render()
+}
+
+/// Render the editable profile form.
+///
 /// # Errors
 ///
 /// Returns [`askama::Error`] when template rendering fails.
 pub fn render_profile_html(
     return_url: &str,
-    username: &str,
-    email: &str,
-    first_name: &str,
-    last_name: &str,
+    cancel_url: &str,
+    fields: &ProfileFields,
     error: Option<&str>,
-    saved: bool,
 ) -> Result<String, askama::Error> {
-    ProfileTemplate {
+    ProfileEditTemplate {
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
-        username: username.to_string(),
-        email: email.to_string(),
-        first_name: first_name.to_string(),
-        last_name: last_name.to_string(),
+        cancel_url: cancel_url.to_string(),
         error: error.unwrap_or_default().to_string(),
-        saved,
+        username: fields.username.clone(),
+        email: fields.email.clone(),
+        first_name: fields.first_name.clone(),
+        last_name: fields.last_name.clone(),
+        phone: fields.phone.clone(),
+        street: fields.street.clone(),
+        city: fields.city.clone(),
+        region: fields.region.clone(),
+        postal_code: fields.postal_code.clone(),
+        country: fields.country.clone(),
+        birthdate: fields.birthdate.clone(),
+        company: fields.company.clone(),
     }
     .render()
 }
@@ -227,20 +322,50 @@ mod tests {
     }
 
     #[test]
-    fn profile_extends_sigma_theme_base() {
+    fn profile_edit_extends_sigma_theme_base() {
+        let fields = ProfileFields {
+            username: "bob".into(),
+            email: "bob@example.com".into(),
+            first_name: "Bob".into(),
+            last_name: "Example".into(),
+            ..ProfileFields::default()
+        };
         let html = render_profile_html(
             "http://localhost:3000/exampleapp/",
-            "bob",
-            "bob@example.com",
-            "Bob",
-            "Example",
+            "http://localhost:3000/profile",
+            &fields,
             None,
-            false,
         )
-        .expect("profile template");
+        .expect("profile edit template");
         assert!(html.contains("sigma-dial-root"));
         assert!(html.contains("Edit profile"));
         assert!(html.contains("name=\"return_url\""));
         assert!(html.contains("value=\"bob@example.com\""));
+        assert!(html.contains("name=\"phone\""));
+        assert!(html.contains("name=\"company\""));
+    }
+
+    #[test]
+    fn profile_view_lists_fields_and_actions() {
+        let fields = ProfileFields {
+            username: "bob".into(),
+            email: "bob@example.com".into(),
+            first_name: "Bob".into(),
+            ..ProfileFields::default()
+        };
+        let html = render_profile_view_html(
+            "http://localhost:3000/exampleapp/",
+            "http://localhost:3000/profile?edit=1",
+            "http://localhost:3000/auth/logout",
+            &fields,
+            true,
+        )
+        .expect("profile view template");
+        assert!(html.contains("sigma-dial-root"));
+        assert!(html.contains("bob@example.com"));
+        // Empty fields render as "Unfilled".
+        assert!(html.contains("Unfilled"));
+        assert!(html.contains("Sign out"));
+        assert!(html.contains("Edit"));
     }
 }

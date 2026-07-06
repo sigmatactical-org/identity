@@ -2698,6 +2698,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sigma-identity-nav"
+version = "0.1.0"
+dependencies = [
+ "askama",
+]
+
+[[package]]
 name = "sigma-pg"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Edit profile — Sigma Tactical Group{% endblock %}
+
+{% block brand %}Sigma Identity{% endblock %}
+
+{% block main_class %}app-main{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="register-card">
+    <h1>Edit profile</h1>
+    <p class="lead">Update your account details for Sigma Tactical Group applications.</p>
+
+    {% if error != "" %}
+    <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/profile">
+      <input type="hidden" name="return_url" value="{{ return_url }}" />
+
+      <div class="mb-3">
+        <label for="username" class="form-label">Username</label>
+        <input
+          class="form-control"
+          type="text"
+          id="username"
+          name="username"
+          value="{{ username }}"
+          autocomplete="username"
+          required
+        />
+      </div>
+
+      <div class="mb-3">
+        <label for="email" class="form-label">Email</label>
+        <input
+          class="form-control"
+          type="email"
+          id="email"
+          name="email"
+          value="{{ email }}"
+          autocomplete="email"
+          required
+        />
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="first_name" class="form-label">First name</label>
+          <input
+            class="form-control"
+            type="text"
+            id="first_name"
+            name="first_name"
+            value="{{ first_name }}"
+            autocomplete="given-name"
+          />
+        </div>
+        <div class="col-md-6 mb-3">
+          <label for="last_name" class="form-label">Last name</label>
+          <input
+            class="form-control"
+            type="text"
+            id="last_name"
+            name="last_name"
+            value="{{ last_name }}"
+            autocomplete="family-name"
+          />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="phone" class="form-label">Phone</label>
+          <input
+            class="form-control"
+            type="tel"
+            id="phone"
+            name="phone"
+            value="{{ phone }}"
+            autocomplete="tel"
+          />
+        </div>
+        <div class="col-md-6 mb-3">
+          <label for="company" class="form-label">Company</label>
+          <input
+            class="form-control"
+            type="text"
+            id="company"
+            name="company"
+            value="{{ company }}"
+            autocomplete="organization"
+          />
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="street" class="form-label">Street address</label>
+        <input
+          class="form-control"
+          type="text"
+          id="street"
+          name="street"
+          value="{{ street }}"
+          autocomplete="street-address"
+        />
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="city" class="form-label">City</label>
+          <input
+            class="form-control"
+            type="text"
+            id="city"
+            name="city"
+            value="{{ city }}"
+            autocomplete="address-level2"
+          />
+        </div>
+        <div class="col-md-6 mb-3">
+          <label for="region" class="form-label">State / region</label>
+          <input
+            class="form-control"
+            type="text"
+            id="region"
+            name="region"
+            value="{{ region }}"
+            autocomplete="address-level1"
+          />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="postal_code" class="form-label">Postal code</label>
+          <input
+            class="form-control"
+            type="text"
+            id="postal_code"
+            name="postal_code"
+            value="{{ postal_code }}"
+            autocomplete="postal-code"
+          />
+        </div>
+        <div class="col-md-6 mb-3">
+          <label for="country" class="form-label">Country</label>
+          <input
+            class="form-control"
+            type="text"
+            id="country"
+            name="country"
+            value="{{ country }}"
+            autocomplete="country-name"
+          />
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="birthdate" class="form-label">Date of birth</label>
+        <input
+          class="form-control"
+          type="date"
+          id="birthdate"
+          name="birthdate"
+          value="{{ birthdate }}"
+          autocomplete="bday"
+        />
+      </div>
+
+      <div class="d-flex flex-wrap gap-2">
+        <button type="submit" class="btn btn-primary">Save changes</button>
+        <a class="btn btn-outline-secondary" href="{{ cancel_url }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

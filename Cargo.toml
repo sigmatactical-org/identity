@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "conformance-tool", "echo"]
+members = [".", "conformance-tool", "echo", "nav"]
 resolver = "2"
 
 [workspace.package]

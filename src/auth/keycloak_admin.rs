@@ -59,13 +59,50 @@ pub(crate) struct UserRepresentation {
     attributes: Option<HashMap<String, Vec<String>>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+// Keycloak custom user-profile attribute keys. These must also be declared in
+// the realm's user-profile config (see dev_realm.json) or Keycloak rejects
+// writes to them.
+const ATTR_PHONE: &str = "phone";
+const ATTR_STREET: &str = "street";
+const ATTR_CITY: &str = "city";
+const ATTR_REGION: &str = "region";
+const ATTR_POSTAL_CODE: &str = "postalCode";
+const ATTR_COUNTRY: &str = "country";
+const ATTR_BIRTHDATE: &str = "birthdate";
+const ATTR_COMPANY: &str = "company";
+
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UserProfile {
     pub username: Option<String>,
     pub email: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+    pub phone: Option<String>,
+    pub street: Option<String>,
+    pub city: Option<String>,
+    pub region: Option<String>,
+    pub postal_code: Option<String>,
+    pub country: Option<String>,
+    pub birthdate: Option<String>,
+    pub company: Option<String>,
+}
+
+/// All editable profile fields, as submitted by the profile edit form.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ProfileInput {
+    pub username: String,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub phone: String,
+    pub street: String,
+    pub city: String,
+    pub region: String,
+    pub postal_code: String,
+    pub country: String,
+    pub birthdate: String,
+    pub company: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,6 +112,30 @@ struct UpdateProfilePayload<'a> {
     email: &'a str,
     first_name: &'a str,
     last_name: &'a str,
+    attributes: HashMap<String, Vec<String>>,
+}
+
+/// First non-empty value for a Keycloak user attribute.
+fn attribute_value(attributes: &Option<HashMap<String, Vec<String>>>, key: &str) -> Option<String> {
+    attributes
+        .as_ref()
+        .and_then(|map| map.get(key))
+        .and_then(|values| {
+            values
+                .iter()
+                .find(|value| !value.trim().is_empty())
+                .cloned()
+        })
+}
+
+/// Set a single-valued attribute, or remove it when the value is blank.
+fn set_or_remove_attribute(map: &mut HashMap<String, Vec<String>>, key: &str, value: &str) {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        map.remove(key);
+    } else {
+        map.insert(key.to_string(), vec![trimmed.to_string()]);
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -263,21 +324,27 @@ impl KeycloakAdmin {
 
     pub(crate) async fn get_user_profile(&self, user_id: &str) -> Result<UserProfile> {
         let user = self.get_user(user_id).await?;
+        let attributes = user.attributes;
         Ok(UserProfile {
             username: user.username,
             email: user.email,
             first_name: user.first_name,
             last_name: user.last_name,
+            phone: attribute_value(&attributes, ATTR_PHONE),
+            street: attribute_value(&attributes, ATTR_STREET),
+            city: attribute_value(&attributes, ATTR_CITY),
+            region: attribute_value(&attributes, ATTR_REGION),
+            postal_code: attribute_value(&attributes, ATTR_POSTAL_CODE),
+            country: attribute_value(&attributes, ATTR_COUNTRY),
+            birthdate: attribute_value(&attributes, ATTR_BIRTHDATE),
+            company: attribute_value(&attributes, ATTR_COMPANY),
         })
     }
 
     pub(crate) async fn update_user_profile(
         &self,
         user_id: &str,
-        username: &str,
-        email: &str,
-        first_name: &str,
-        last_name: &str,
+        input: &ProfileInput,
     ) -> Result<()> {
         let token = self.access_token().await?;
         let url = format!(
@@ -286,11 +353,24 @@ impl KeycloakAdmin {
             self.realm,
             user_id
         );
+        // Preserve existing attributes (e.g. createdDate, registrationReturnUrl)
+        // since a PUT with `attributes` replaces the whole attribute set.
+        let current = self.get_user(user_id).await?;
+        let mut attributes = current.attributes.unwrap_or_default();
+        set_or_remove_attribute(&mut attributes, ATTR_PHONE, &input.phone);
+        set_or_remove_attribute(&mut attributes, ATTR_STREET, &input.street);
+        set_or_remove_attribute(&mut attributes, ATTR_CITY, &input.city);
+        set_or_remove_attribute(&mut attributes, ATTR_REGION, &input.region);
+        set_or_remove_attribute(&mut attributes, ATTR_POSTAL_CODE, &input.postal_code);
+        set_or_remove_attribute(&mut attributes, ATTR_COUNTRY, &input.country);
+        set_or_remove_attribute(&mut attributes, ATTR_BIRTHDATE, &input.birthdate);
+        set_or_remove_attribute(&mut attributes, ATTR_COMPANY, &input.company);
         let payload = UpdateProfilePayload {
-            username,
-            email,
-            first_name,
-            last_name,
+            username: &input.username,
+            email: &input.email,
+            first_name: &input.first_name,
+            last_name: &input.last_name,
+            attributes,
         };
         let body = serde_json::to_string(&payload).context("serialize update profile payload")?;
         let response = self
