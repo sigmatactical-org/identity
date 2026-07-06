@@ -18,6 +18,7 @@ normalize_tree() {
 }
 
 mkdir -p "$ROOT/build/image"
+rm -f "$ROOT/build/image/sigma-identity"
 cp "$BIN" "$ROOT/build/image/sigma-identity"
 chmod 555 "$ROOT/build/image/sigma-identity"
 rm -rf "$ROOT/build/image/files"

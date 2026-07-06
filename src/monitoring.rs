@@ -8,12 +8,18 @@ use sqlx::PgPool;
 use tracing::error;
 
 async fn health_check(Extension(pool): Extension<PgPool>) -> Response {
-    if let Err(err) = sigma_pg::ping(&pool).await {
-        error!("Failed to connect to PostgreSQL: {err:?}");
-        return (StatusCode::SERVICE_UNAVAILABLE, "Unhealthy").into_response();
+    let report = sigma_pg::health::build_report("identity", Some(&pool)).await;
+    let status = StatusCode::from_u16(sigma_pg::health::http_status_code(&report))
+        .unwrap_or(StatusCode::SERVICE_UNAVAILABLE);
+    if status != StatusCode::OK {
+        error!("identity health unhealthy: {:?}", report.checks);
     }
-
-    (StatusCode::OK, "OK").into_response()
+    (
+        status,
+        [("content-type", "application/json")],
+        serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string()),
+    )
+        .into_response()
 }
 
 pub(crate) fn health_routes(pool: PgPool) -> Router {
@@ -77,7 +83,7 @@ mod tests {
             .await
             .unwrap();
 
-        let status = response.status();
+        assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(
             response
                 .into_body()
@@ -88,8 +94,8 @@ mod tests {
                 .to_vec(),
         )
         .unwrap();
-
-        assert_eq!(status, StatusCode::OK, "Expected 200 OK, but {body}");
-        assert_eq!(body, "OK");
+        let report: sigma_pg::health::HealthReport = serde_json::from_str(&body).unwrap();
+        assert_eq!(report.service, "identity");
+        assert_eq!(report.status, sigma_pg::health::ServiceStatus::Healthy);
     }
 }
