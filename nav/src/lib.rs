@@ -121,28 +121,36 @@ pub fn render_site_nav(
     .render()
 }
 
+/// Inputs for [`render_app_site_nav`].
+pub struct AppSiteNav<'a> {
+    pub identity_base: &'a str,
+    pub app_base: &'a str,
+    pub contact_base: &'a str,
+    pub cart_url: &'a str,
+    pub cart_count: u32,
+    pub return_path: &'a str,
+    pub show_contact_us: bool,
+    pub leading_html: &'a str,
+}
+
 /// Convenience wrapper around [`auth_links`] and [`render_site_nav`].
 ///
 /// # Errors
 ///
 /// Returns [`askama::Error`] when template rendering fails.
-pub fn render_app_site_nav(
-    identity_base: &str,
-    app_base: &str,
-    contact_base: &str,
-    cart_url: &str,
-    cart_count: u32,
-    return_path: &str,
-    show_contact_us: bool,
-    leading_html: &str,
-) -> Result<String, askama::Error> {
-    let links = auth_links(identity_base, app_base, contact_base, return_path);
+pub fn render_app_site_nav(input: &AppSiteNav<'_>) -> Result<String, askama::Error> {
+    let links = auth_links(
+        input.identity_base,
+        input.app_base,
+        input.contact_base,
+        input.return_path,
+    );
     render_site_nav(
         &links,
-        cart_url,
-        cart_count,
-        show_contact_us,
-        leading_html,
+        input.cart_url,
+        input.cart_count,
+        input.show_contact_us,
+        input.leading_html,
     )
 }
 

@@ -10,7 +10,7 @@ use axum::{
     body::Body,
     http::{
         HeaderValue, StatusCode, Uri,
-        header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST},
+        header::{AUTHORIZATION, COOKIE, HOST},
     },
     response::{Html, IntoResponse, Response},
     routing::delete,
@@ -211,12 +211,7 @@ async fn exampleapp_page() -> impl IntoResponse {
         Ok(html) => Html(html).into_response(),
         Err(error) => {
             error!("Failed to render example app page: {error}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [(CONTENT_TYPE, "text/plain; charset=utf-8")],
-                "Internal Server Error",
-            )
-                .into_response()
+            sigma_theme::axum::internal_server_error().await
         }
     }
 }
@@ -226,12 +221,7 @@ async fn conformance_page() -> impl IntoResponse {
         Ok(html) => Html(html).into_response(),
         Err(error) => {
             error!("Failed to render conformance page: {error}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [(CONTENT_TYPE, "text/plain; charset=utf-8")],
-                "Internal Server Error",
-            )
-                .into_response()
+            sigma_theme::axum::internal_server_error().await
         }
     }
 }
@@ -511,5 +501,8 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         }
     }
 
-    Ok(security_headers(app))
+    Ok(security_headers(
+        app.fallback(sigma_theme::axum::not_found)
+            .layer(sigma_theme::axum::catch_panic_layer()),
+    ))
 }
