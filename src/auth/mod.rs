@@ -135,7 +135,7 @@ impl SessionTokens {
 
     /// Subject (`sub`) from the stored ID token.
     pub(crate) fn subject(&self) -> Option<String> {
-        id_token_claims(&self.id_token)?
+        jwt_claims(&self.id_token)?
             .get("sub")
             .and_then(|value| value.as_str())
             .map(str::trim)
@@ -143,35 +143,64 @@ impl SessionTokens {
             .map(str::to_string)
     }
 
-    /// Whether the stored ID token includes any of the given realm roles.
+    /// Whether the stored tokens include any of the given realm roles.
+    ///
+    /// Keycloak's default `roles` client scope puts `realm_access` on the access
+    /// token, not the ID token, so both are checked.
     pub(crate) fn has_any_realm_role(&self, roles: &[&str]) -> bool {
-        let Some(claims) = id_token_claims(&self.id_token) else {
-            return false;
-        };
-        let Some(role_values) = claims
-            .get("realm_access")
-            .and_then(|access| access.get("roles"))
-            .and_then(|value| value.as_array())
-        else {
-            return false;
-        };
-        role_values
-            .iter()
-            .any(|value| value.as_str().is_some_and(|role| roles.contains(&role)))
+        token_has_any_realm_role(&self.access_token, roles)
+            || token_has_any_realm_role(&self.id_token, roles)
     }
 }
 
-fn id_token_claims(id_token: &str) -> Option<serde_json::Value> {
+fn token_has_any_realm_role(token: &str, roles: &[&str]) -> bool {
+    let Some(claims) = jwt_claims(token) else {
+        return false;
+    };
+    let Some(role_values) = claims
+        .get("realm_access")
+        .and_then(|access| access.get("roles"))
+        .and_then(|value| value.as_array())
+    else {
+        return false;
+    };
+    role_values
+        .iter()
+        .any(|value| value.as_str().is_some_and(|role| roles.contains(&role)))
+}
+
+fn jwt_claims(token: &str) -> Option<serde_json::Value> {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-    let payload = id_token.split('.').nth(1)?;
+    let payload = token.split('.').nth(1)?;
     let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
 
+#[cfg(test)]
+mod realm_role_tests {
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    use super::token_has_any_realm_role;
+
+    fn fake_jwt(payload: &str) -> String {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
+        let body = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        format!("{header}.{body}.")
+    }
+
+    #[test]
+    fn realm_roles_are_read_from_access_token_payload() {
+        let token = fake_jwt(r#"{"realm_access":{"roles":["sigma-admin"]}}"#);
+        assert!(token_has_any_realm_role(&token, &["sigma-admin"]));
+        assert!(!token_has_any_realm_role(&token, &["other-role"]));
+    }
+}
+
 fn display_name_from_id_token(id_token: &str) -> Option<String> {
-    let claims = id_token_claims(id_token)?;
+    let claims = jwt_claims(id_token)?;
     if let Some(username) = claims
         .get("preferred_username")
         .and_then(|v| v.as_str())
@@ -204,7 +233,7 @@ fn display_name_from_id_token(id_token: &str) -> Option<String> {
 }
 
 fn email_from_id_token(id_token: &str) -> Option<String> {
-    id_token_claims(id_token)?
+    jwt_claims(id_token)?
         .get("email")
         .and_then(|v| v.as_str())
         .map(str::trim)
