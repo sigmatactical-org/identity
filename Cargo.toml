@@ -54,6 +54,8 @@ tower = { version = "0.5.2", features = ["util"] }
 mimalloc = "0.1.43"
 rustls = { version = "0.23.15", features = ["ring"] }
 sigma-theme = { git = "https://github.com/sigmatactical-org/sigma-theme.git", default-features = false, features = ["askama", "axum"] }
+sigma-identity-nav = { path = "nav" }
+sigma-cart-nav = { git = "https://github.com/sigmatactical-org/cart.git" }
 
 [dev-dependencies]
 hyper = "1.5.0"

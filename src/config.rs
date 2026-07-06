@@ -197,6 +197,30 @@ pub fn registration_return_uris() -> Result<Vec<String>> {
         .collect())
 }
 
+fn normalize_service_base_url(url: &str) -> String {
+    let mut url = url.trim().to_string();
+    if !url.ends_with('/') {
+        url.push('/');
+    }
+    url
+}
+
+/// Public base URL of the cart service for navbar links.
+pub fn cart_public_base_url() -> String {
+    var_optional("CART_PUBLIC_URL")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| normalize_service_base_url(&value))
+        .unwrap_or_else(|| "http://127.0.0.1:8084/".to_string())
+}
+
+/// Public base URL of the contact service for navbar links.
+pub fn contact_public_base_url() -> String {
+    var_optional("CONTACT_PUBLIC_URL")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| normalize_service_base_url(&value))
+        .unwrap_or_else(|| "http://127.0.0.1:8083/".to_string())
+}
+
 /// Realm roles that grant access to `/admin/*` (comma-separated). Defaults to
 /// `sigma-admin`.
 pub fn admin_realm_roles() -> Vec<String> {

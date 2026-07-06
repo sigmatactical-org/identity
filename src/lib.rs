@@ -22,6 +22,7 @@ mod geo;
 mod http;
 mod monitoring;
 mod session;
+mod site_nav;
 mod templates;
 
 async fn shutdown_signal() {

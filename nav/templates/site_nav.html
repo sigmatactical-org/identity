@@ -1,0 +1,10 @@
+<div class="d-flex align-items-center gap-2">
+  {% if !leading_html.is_empty() %}
+  {{ leading_html|safe }}
+  {% endif %}
+  {{ auth_nav|safe }}
+  {{ cart_nav|safe }}
+  {% if show_contact_us %}
+  <a class="btn btn-outline-light btn-sm" href="{{ contact_us_url|safe }}">Contact us</a>
+  {% endif %}
+</div>

@@ -4,6 +4,10 @@
 
 {% block brand %}Sigma Identity{% endblock %}
 
+{% block nav_actions %}
+{{ site_nav|safe }}
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
   <h1>OIDC conformance client</h1>

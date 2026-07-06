@@ -9,6 +9,7 @@
 //! profile page when signed in; sign-out lives on the profile page.
 
 use askama::Template;
+use sigma_cart_nav::render_cart_nav;
 
 /// Resolved identity / contact URLs for a service's navbar.
 pub struct AuthLinks {
@@ -83,6 +84,66 @@ pub fn render_auth_nav(links: &AuthLinks) -> Result<String, askama::Error> {
         profile_url: &links.profile_url,
     }
     .render()
+}
+
+#[derive(Template)]
+#[template(path = "site_nav.html")]
+struct SiteNavTemplate<'a> {
+    leading_html: &'a str,
+    auth_nav: &'a str,
+    cart_nav: &'a str,
+    contact_us_url: &'a str,
+    show_contact_us: bool,
+}
+
+/// Render the standard Sigma header actions: optional leading link, sign-in /
+/// welcome widget, cart icon, and optionally a contact-us button.
+///
+/// # Errors
+///
+/// Returns [`askama::Error`] when template rendering fails.
+pub fn render_site_nav(
+    links: &AuthLinks,
+    cart_url: &str,
+    cart_count: u32,
+    show_contact_us: bool,
+    leading_html: &str,
+) -> Result<String, askama::Error> {
+    let auth_nav = render_auth_nav(links)?;
+    let cart_nav = render_cart_nav(cart_url, cart_count)?;
+    SiteNavTemplate {
+        leading_html,
+        auth_nav: &auth_nav,
+        cart_nav: &cart_nav,
+        contact_us_url: &links.contact_us_url,
+        show_contact_us,
+    }
+    .render()
+}
+
+/// Convenience wrapper around [`auth_links`] and [`render_site_nav`].
+///
+/// # Errors
+///
+/// Returns [`askama::Error`] when template rendering fails.
+pub fn render_app_site_nav(
+    identity_base: &str,
+    app_base: &str,
+    contact_base: &str,
+    cart_url: &str,
+    cart_count: u32,
+    return_path: &str,
+    show_contact_us: bool,
+    leading_html: &str,
+) -> Result<String, askama::Error> {
+    let links = auth_links(identity_base, app_base, contact_base, return_path);
+    render_site_nav(
+        &links,
+        cart_url,
+        cart_count,
+        show_contact_us,
+        leading_html,
+    )
 }
 
 fn join_url(base: &str, path: &str) -> String {
@@ -184,5 +245,33 @@ mod tests {
         assert!(html.contains("store-nav-auth.js"));
         // Sign-out button must not appear in the nav widget.
         assert!(!html.contains("Sign out"));
+    }
+
+    #[test]
+    fn site_nav_includes_auth_cart_and_contact() {
+        let links = auth_links(
+            "http://identity.example",
+            "http://store.example",
+            "http://contact.example",
+            "/",
+        );
+        let html = render_site_nav(&links, "http://cart.example/", 2, true, "").expect("render");
+        assert!(html.contains("store-nav-auth"));
+        assert!(html.contains("href=\"http://cart.example/\""));
+        assert!(html.contains("Contact us"));
+        assert!(html.contains(">2</span>"));
+    }
+
+    #[test]
+    fn site_nav_can_hide_contact_us() {
+        let links = auth_links(
+            "http://identity.example",
+            "http://contact.example",
+            "http://contact.example",
+            "/contact",
+        );
+        let html = render_site_nav(&links, "http://cart.example/", 0, false, "").expect("render");
+        assert!(html.contains("store-nav-auth"));
+        assert!(!html.contains("Contact us"));
     }
 }

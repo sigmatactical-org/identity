@@ -2696,6 +2696,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "sigma-cart-nav"
+version = "0.1.0"
+source = "git+https://github.com/sigmatactical-org/cart.git#fc80eea8bcdace216d474e89016c21a0941dfb71"
+dependencies = [
+ "askama",
+]
+
+[[package]]
 name = "sigma-conformance"
 version = "0.0.1"
 dependencies = [
@@ -2736,6 +2744,8 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "sigma-cart-nav",
+ "sigma-identity-nav",
  "sigma-pg",
  "sigma-theme",
  "sqlx",
@@ -2767,6 +2777,7 @@ name = "sigma-identity-nav"
 version = "0.1.0"
 dependencies = [
  "askama",
+ "sigma-cart-nav",
 ]
 
 [[package]]

@@ -1,21 +1,28 @@
 use askama::Template;
 use sigma_theme::copyright_years;
 
+fn site_nav(return_path: &str, show_contact_us: bool) -> Result<String, askama::Error> {
+    crate::site_nav::render(return_path, show_contact_us, "", 0)
+}
+
 #[derive(Template)]
 #[template(path = "exampleapp.html")]
 struct ExampleAppTemplate {
+    site_nav: String,
     copyright_years: String,
 }
 
 #[derive(Template)]
 #[template(path = "conformance.html")]
 struct ConformanceTemplate {
+    site_nav: String,
     copyright_years: String,
 }
 
 #[derive(Template)]
 #[template(path = "register_success.html")]
 struct RegisterSuccessTemplate {
+    site_nav: String,
     copyright_years: String,
     return_url: String,
     auto_approved: bool,
@@ -24,6 +31,7 @@ struct RegisterSuccessTemplate {
 #[derive(Template)]
 #[template(path = "register_verified.html")]
 struct RegisterVerifiedTemplate {
+    site_nav: String,
     copyright_years: String,
     return_url: String,
     activated: bool,
@@ -32,6 +40,7 @@ struct RegisterVerifiedTemplate {
 #[derive(Template)]
 #[template(path = "register.html")]
 struct RegisterTemplate {
+    site_nav: String,
     copyright_years: String,
     return_url: String,
     email: String,
@@ -74,6 +83,7 @@ struct CountryOption {
 #[derive(Template)]
 #[template(path = "profile.html")]
 struct ProfileViewTemplate {
+    site_nav: String,
     copyright_years: String,
     return_url: String,
     edit_url: String,
@@ -85,6 +95,7 @@ struct ProfileViewTemplate {
 #[derive(Template)]
 #[template(path = "profile_edit.html")]
 struct ProfileEditTemplate {
+    site_nav: String,
     copyright_years: String,
     return_url: String,
     cancel_url: String,
@@ -116,6 +127,7 @@ pub(crate) struct AdminUserRow {
 #[derive(Template)]
 #[template(path = "admin_users.html")]
 struct AdminUsersTemplate {
+    site_nav: String,
     copyright_years: String,
     search: String,
     has_prev: bool,
@@ -128,6 +140,7 @@ struct AdminUsersTemplate {
 #[derive(Template)]
 #[template(path = "admin_user.html")]
 struct AdminUserTemplate {
+    site_nav: String,
     copyright_years: String,
     user_id: String,
     username: String,
@@ -142,6 +155,7 @@ struct AdminUserTemplate {
 /// Returns [`askama::Error`] when template rendering fails.
 pub fn render_exampleapp_html() -> Result<String, askama::Error> {
     ExampleAppTemplate {
+        site_nav: site_nav("/exampleapp/", true)?,
         copyright_years: copyright_years(),
     }
     .render()
@@ -152,6 +166,7 @@ pub fn render_exampleapp_html() -> Result<String, askama::Error> {
 /// Returns [`askama::Error`] when template rendering fails.
 pub fn render_conformance_html() -> Result<String, askama::Error> {
     ConformanceTemplate {
+        site_nav: site_nav("/conformance/", true)?,
         copyright_years: copyright_years(),
     }
     .render()
@@ -169,6 +184,7 @@ pub fn render_register_html(
     error: Option<&str>,
 ) -> Result<String, askama::Error> {
     RegisterTemplate {
+        site_nav: site_nav("/register", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         email: email.to_string(),
@@ -188,6 +204,7 @@ pub fn render_register_success_html(
     auto_approved: bool,
 ) -> Result<String, askama::Error> {
     RegisterSuccessTemplate {
+        site_nav: site_nav("/register/success", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         auto_approved,
@@ -203,6 +220,7 @@ pub fn render_register_verified_html(
     activated: bool,
 ) -> Result<String, askama::Error> {
     RegisterVerifiedTemplate {
+        site_nav: site_nav("/register/verified", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         activated,
@@ -245,6 +263,7 @@ pub fn render_profile_view_html(
         profile_row("Date of birth", &fields.birthdate),
     ];
     ProfileViewTemplate {
+        site_nav: site_nav("/profile", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         edit_url: edit_url.to_string(),
@@ -274,6 +293,7 @@ pub fn render_profile_html(
         })
         .collect();
     ProfileEditTemplate {
+        site_nav: site_nav("/profile", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         cancel_url: cancel_url.to_string(),
@@ -307,6 +327,7 @@ pub fn render_admin_users_html(
     users: Vec<AdminUserRow>,
 ) -> Result<String, askama::Error> {
     AdminUsersTemplate {
+        site_nav: site_nav("/admin/users", true)?,
         copyright_years: copyright_years(),
         search: search.to_string(),
         has_prev,
@@ -332,6 +353,7 @@ pub fn render_admin_user_html(
     rows: Vec<ProfileViewRow>,
 ) -> Result<String, askama::Error> {
     AdminUserTemplate {
+        site_nav: site_nav(&format!("/admin/users/{user_id}"), true)?,
         copyright_years: copyright_years(),
         user_id: user_id.to_string(),
         username,
