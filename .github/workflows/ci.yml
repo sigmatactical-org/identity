@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: sigmatactical-org/sigma-pg
-          path: sigma-pg
+          path: ../sigma-pg
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -60,6 +60,8 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
       - name: Prepare PostgreSQL schema
+        env:
+          SIGMA_PG_DIR: ${{ github.workspace }}/../sigma-pg
         run: ./scripts/prepare-e2e-postgres.sh
       - run: cargo test --all-targets -- --test-threads=1
 
