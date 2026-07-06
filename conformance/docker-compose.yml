@@ -1,8 +1,8 @@
 # sigma-identity RP harness under test.
 # Requires /etc/hosts: 127.0.0.1 localhost.emobix.co.uk keycloak.localhost
 #
-# PostgreSQL is started from sigma-pg/docker-compose.deps.yml by conformance-stack.sh
-# (not duplicated here). Identity reaches it via host.docker.internal:5432.
+# PostgreSQL runs in the kind stack; port-forward with platform/scripts/postgres-dev.sh
+# before starting this stack. Identity reaches it via host.docker.internal:5432.
 #
 # The upstream OIDC conformance suite requires MongoDB, so it is not run here.
 # Set CONFORMANCE_SERVER to a hosted suite URL when running plans.

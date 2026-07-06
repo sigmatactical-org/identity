@@ -25,12 +25,9 @@ services:
           - keycloak.localhost
   identity:
     ports: !reset []
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
-      - default
-      - sigma-dev
-  postgres:
-    networks:
-      - sigma-dev
       - default
   keycloak:
     environment:
@@ -38,8 +35,3 @@ services:
       - KC_HTTP_ENABLED=true
       - KC_HOSTNAME=https://keycloak.localhost:8101/
       - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
-
-networks:
-  sigma-dev:
-    external: true
-    name: sigma-dev

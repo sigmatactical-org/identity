@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start/stop the devcontainer E2E stack (Traefik TLS, Keycloak, PostgreSQL, echo).
+# Start/stop the devcontainer E2E stack (Traefik TLS, Keycloak, echo).
+# PostgreSQL comes from the kind stack (platform/scripts/postgres-dev.sh).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -17,37 +18,11 @@ hosts_keycloak() {
   fi
 }
 
-ensure_sigma_dev_network() {
-  docker network create sigma-dev >/dev/null 2>&1 || true
-}
-
-ensure_sigma_pg_compose() {
-  if [[ ! -f "$(sigma_pg_compose)" ]]; then
-    echo "error: sigma-pg compose file not found at $(sigma_pg_compose)" >&2
-    echo "       Clone https://github.com/sigmatactical-org/sigma-pg next to this repo" >&2
-    echo "       or set SIGMA_PG_DIR to the checkout path." >&2
-    return 1
-  fi
-}
-
-prepare_sigma_pg_layout() {
-  ensure_sigma_pg_compose
-  local pg_dir expected
-  pg_dir="$(sigma_pg_dir)"
-  expected="$(cd "$ROOT/.devcontainer/../.." && pwd)/sigma-pg"
-  if [[ ! -f "${expected}/docker-compose.deps.yml" ]]; then
-    mkdir -p "$(dirname "$expected")"
-    ln -sfn "$pg_dir" "$expected"
-  fi
-}
-
 keycloak_theme_marker() {
   printf '%s\n' "$1/assets/keycloak/sigma/login/theme.properties"
 }
 
 prepare_theme_layout() {
-  # docker-compose mounts ../../theme from .devcontainer (monorepo: it/theme).
-  # CI checks out sigma-theme at identity/theme; symlink parent ../theme for compose.
   local compose_theme expected
   compose_theme="$(cd "$ROOT/.devcontainer/../.." && pwd)/theme"
   expected="$(keycloak_theme_marker "$compose_theme")"
@@ -94,7 +69,6 @@ stop_identity() {
 
 start_identity() {
   stop_identity
-  # Run sigma-identity as the detached exec main process (not backgrounded under bash).
   "${COMPOSE[@]}" exec -d identity bash -lc \
     "cd /workspace && cp .env.e2e-ci .env && ./target/release/sigma-identity >>${IDENTITY_LOG} 2>&1"
 }
@@ -125,13 +99,14 @@ cmd="${1:-}"
 case "$cmd" in
   up)
     hosts_keycloak
-    prepare_sigma_pg_layout
     prepare_theme_layout
-    ensure_sigma_dev_network
+    if ! PGPASSWORD=sigma psql -h 127.0.0.1 -p 5432 -U sigma -d sigma -c 'select 1' >/dev/null 2>&1; then
+      echo "Starting PostgreSQL port-forward from kind..."
+      ensure_postgres
+    fi
     "${COMPOSE[@]}" up -d --build
     ;;
   down)
-    prepare_sigma_pg_layout
     prepare_theme_layout
     "${COMPOSE[@]}" down -v
     ;;

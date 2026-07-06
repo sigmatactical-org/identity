@@ -8,7 +8,6 @@ cd "$ROOT"
 source "$ROOT/scripts/sigma-pg-dir.sh"
 
 COMPOSE=(docker compose -f conformance/docker-compose.yml)
-PG_COMPOSE=(docker compose -f "$(sigma_pg_compose)")
 CONFORMANCE_SERVER="${CONFORMANCE_SERVER:-}"
 CLIENT_ID="${CLIENT_ID:-sigma-identity-conformance}"
 CLIENT_SECRET="${CLIENT_SECRET:-conformance-client-secret-not-for-production}"
@@ -107,14 +106,13 @@ case "$cmd" in
   up)
     hosts_entries
     if ! pg_isready -h 127.0.0.1 -p 5432 -U sigma -d sigma >/dev/null 2>&1; then
-      echo "Starting PostgreSQL from sigma-pg..."
-      (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" up -d)
+      echo "Starting PostgreSQL port-forward from kind..."
+      ensure_postgres
     fi
     "${COMPOSE[@]}" up -d --build
     ;;
   down)
     "${COMPOSE[@]}" down -v
-    (cd "$(sigma_pg_dir)" && "${PG_COMPOSE[@]}" down) || true
     ;;
   wait-suite)
     if [[ -z "${CONFORMANCE_SERVER:-}" ]]; then

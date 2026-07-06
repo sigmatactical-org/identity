@@ -1,5 +1,5 @@
 # Host-native dependencies for sigma-identity (Keycloak, echo).
-# PostgreSQL is started separately from sigma-pg/docker-compose.deps.yml
+# PostgreSQL runs in kind — port-forward with platform/scripts/postgres-dev.sh
 # (see scripts/dev-stack.sh).
 services:
   keycloak:
@@ -9,12 +9,14 @@ services:
       - --import-realm
     ports:
       - "127.0.0.1:8101:8101"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HTTP_PORT: "8101"
       KC_DB: postgres
-      KC_DB_URL_HOST: sigma-pg-postgres
+      KC_DB_URL_HOST: host.docker.internal
       KC_DB_URL_PORT: "5432"
       KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: sigma
@@ -22,8 +24,6 @@ services:
     volumes:
       - ../dev_realm.json:/opt/keycloak/data/import/dev_realm.json
       - ../../theme/assets/keycloak/sigma/login:/opt/keycloak/themes/sigma/login:ro
-    networks:
-      - sigma-dev
 
   echo:
     build:
@@ -31,8 +31,3 @@ services:
       dockerfile: .devcontainer/echo/Dockerfile
     ports:
       - "127.0.0.1:8088:3000"
-
-networks:
-  sigma-dev:
-    external: true
-    name: sigma-dev

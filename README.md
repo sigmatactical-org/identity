@@ -64,7 +64,7 @@ sigma-identity is a stateless BFF except for **PostgreSQL sessions**. It does no
 
 | Dependency | Dev (host) | Dev (container) | Production |
 |------------|------------|-----------------|------------|
-| **PostgreSQL** | [sigma-pg](https://github.com/sigmatactical-org/sigma-pg) via `./scripts/dev-stack.sh up` → `127.0.0.1:5432` | included from sigma-pg in devcontainer compose | Managed PostgreSQL / in-cluster Postgres |
+| **PostgreSQL** | kind cluster via `platform/scripts/postgres-dev.sh port-forward-bg` → `127.0.0.1:5432` | kind Postgres via port-forward to host | In-cluster Postgres |
 | **OIDC IdP** | Keycloak via dev-stack → `127.0.0.1:8101` | Keycloak in devcontainer | Keycloak (or other certified OP) |
 | **Backend to proxy** | Echo via dev-stack → `127.0.0.1:8088` | compose `echo` service | Your API services |
 | **sigma-theme** | `./scripts/prepare-local.sh` | same | baked into release image |
@@ -98,11 +98,11 @@ cp .env.default .env
 cargo run
 ```
 
-Keycloak, PostgreSQL, Traefik, and an echo backend are included in the compose stack. The OIDC client id in `dev_realm.json` is `identity`.
+Keycloak, Traefik, and an echo backend are included in the devcontainer compose stack. PostgreSQL runs in kind — run `platform/scripts/postgres-dev.sh port-forward-bg` on the host first. The OIDC client id in `dev_realm.json` is `identity`.
 
 ### Local (Rust only, bring your own PostgreSQL + IdP)
 
-Requires a running PostgreSQL from [sigma-pg](https://github.com/sigmatactical-org/sigma-pg), an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
+Requires a running PostgreSQL from the [platform](https://github.com/sigmatactical-org/platform) kind stack (`./scripts/postgres-dev.sh port-forward-bg`), an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
 
 ```bash
 ./scripts/prepare-local.sh   # clone/link sigma-theme, build TS, patch cargo
@@ -115,9 +115,8 @@ cargo run
 Unit tests require PostgreSQL (no in-memory or alternate backends):
 
 ```bash
-# Clone sigma-pg next to identity, or set SIGMA_PG_DIR
-git clone https://github.com/sigmatactical-org/sigma-pg ../sigma-pg
-docker compose -f ../sigma-pg/docker-compose.deps.yml up -d
+# Deploy kind + port-forward Postgres (see platform/README.md), or:
+# cd ../platform && ./scripts/postgres-dev.sh port-forward-bg && ./scripts/postgres-dev.sh migrate
 TEST_DATABASE_URL=postgres://sigma:sigma@127.0.0.1:5432/sigma cargo test -- --test-threads=1
 ```
 
