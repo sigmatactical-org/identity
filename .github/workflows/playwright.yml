@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: sigmatactical-org/sigma-pg
-          path: ../sigma-pg
+          path: sigma-pg
 
       - name: Prepare build
         run: ./scripts/prepare-local.sh
@@ -58,8 +58,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Prepare PostgreSQL
-        env:
-          SIGMA_PG_DIR: ${{ github.workspace }}/../sigma-pg
         run: ./scripts/prepare-e2e-postgres.sh
 
       - name: Build identity (host)
