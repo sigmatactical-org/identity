@@ -1,5 +1,6 @@
 [workspace]
 members = [".", "conformance-tool", "echo", "nav"]
+exclude = ["sigma-pg"]
 resolver = "2"
 
 [workspace.package]
