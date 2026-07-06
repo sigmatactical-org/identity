@@ -288,6 +288,18 @@ async fn proxy(
     verify_csrf(&session, req.headers().get(HEADER_KEY_CSRF_TOKEN)).await?;
 
     let jwt: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
+    let path = req.uri().path();
+    if proxy_path_requires_admin(path) {
+        let Some(tokens) = jwt.as_ref() else {
+            return Err((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+        };
+        let role_names = config::admin_realm_roles();
+        let required_roles: Vec<&str> = role_names.iter().map(String::as_str).collect();
+        if !required_roles.is_empty() && !tokens.has_any_realm_role(&required_roles) {
+            return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
+        }
+    }
+
     let session_tokens =
         jwt.ok_or_else(|| (StatusCode::UNAUTHORIZED, "Authentication required").into_response())?;
 
@@ -361,6 +373,19 @@ async fn proxy(
                 .into_response()
         })?
         .into_response())
+}
+
+fn proxy_path_requires_admin(path: &str) -> bool {
+    let path = path.trim_start_matches('/').trim_start_matches("api/");
+    path.starts_with("admin")
+        || path.starts_with("carts")
+        || path.starts_with("orders")
+        || path.starts_with("listings")
+        || path.starts_with("skus")
+        || path.starts_with("bills")
+        || path.starts_with("contacts")
+        || path.starts_with("users")
+        || path.starts_with("integrations")
 }
 
 fn security_headers(router: Router) -> Router {

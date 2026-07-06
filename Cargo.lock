@@ -2784,7 +2784,10 @@ name = "sigma-pg"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "reqwest",
+ "serde",
  "sqlx",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -2799,6 +2802,7 @@ dependencies = [
  "mime_guess",
  "rust-embed",
  "tower-http 0.7.0",
+ "tracing",
 ]
 
 [[package]]
