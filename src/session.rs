@@ -80,7 +80,9 @@ pub(crate) async fn postgres_pool(connection_url: &str) -> Result<PgPool> {
 }
 
 pub(crate) async fn session_store(pool: PgPool) -> Result<PostgresStore> {
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::new(pool)
+        .with_schema_name("identity")
+        .map_err(|e| anyhow::anyhow!("invalid identity session schema: {e}"))?;
     store
         .migrate()
         .await
