@@ -21,7 +21,10 @@ fi
 
 pg_dir="$(sigma_pg_dir)"
 echo "Running sigma-pg migrations from $pg_dir..."
-DATABASE_URL="postgres://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/sigma" \
-  cargo run --manifest-path "$pg_dir/Cargo.toml" --bin sigma-pg-migrate
+(
+  cd "$pg_dir"
+  DATABASE_URL="postgres://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/sigma" \
+    cargo run --bin sigma-pg-migrate
+)
 
 echo "PostgreSQL ready for identity E2E."

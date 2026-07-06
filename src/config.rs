@@ -25,6 +25,7 @@ pub fn var_optional(name: &str) -> Option<String> {
 }
 
 /// PostgreSQL URL for integration tests (`TEST_DATABASE_URL` or `IDENTITY_TEST_DATABASE_URL`).
+#[cfg(test)]
 pub fn test_database_url() -> String {
     env::var("TEST_DATABASE_URL")
         .ok()
