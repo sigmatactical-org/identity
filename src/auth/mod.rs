@@ -679,8 +679,7 @@ mod tests {
             .expect("OIDCClient creation failed");
 
             let session_secret: String = random_alphanumeric_string(64);
-            let database_url = crate::config::var_optional("TEST_DATABASE_URL")
-                .unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string());
+            let database_url = crate::config::test_database_url();
             let pg_pool = postgres_pool(&database_url)
                 .await
                 .expect("PostgreSQL required for tests");

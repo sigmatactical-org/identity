@@ -34,8 +34,7 @@ mod tests {
     use super::*;
 
     async fn test_pool() -> PgPool {
-        let url = crate::config::var_optional("TEST_DATABASE_URL")
-            .unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string());
+        let url = crate::config::test_database_url();
         sigma_pg::connect_url(&url)
             .await
             .expect("PostgreSQL required for tests")

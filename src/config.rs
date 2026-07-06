@@ -24,6 +24,14 @@ pub fn var_optional(name: &str) -> Option<String> {
         .or_else(|| env::var(format!("RIDSER_{name}")).ok())
 }
 
+/// PostgreSQL URL for integration tests (`TEST_DATABASE_URL` or `IDENTITY_TEST_DATABASE_URL`).
+pub fn test_database_url() -> String {
+    env::var("TEST_DATABASE_URL")
+        .ok()
+        .or_else(|| var_optional("TEST_DATABASE_URL"))
+        .unwrap_or_else(|| sigma_pg::DEFAULT_DATABASE_URL.to_string())
+}
+
 /// Listen port: `IDENTITY_BIND_PORT`, then Cloud Run `PORT`, then default `3000`.
 pub fn listen_port() -> String {
     var_optional("BIND_PORT")

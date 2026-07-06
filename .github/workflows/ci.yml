@@ -42,6 +42,10 @@ jobs:
         with:
           repository: sigmatactical-org/sigma-theme
           path: theme
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/sigma-pg
+          path: sigma-pg
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -55,6 +59,8 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
+      - name: Prepare PostgreSQL schema
+        run: ./scripts/prepare-e2e-postgres.sh
       - run: cargo test --all-targets -- --test-threads=1
 
   clippy:

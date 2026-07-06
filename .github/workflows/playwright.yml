@@ -21,6 +21,22 @@ jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: sigma
+          POSTGRES_PASSWORD: sigma
+          POSTGRES_DB: sigma
+        options: >-
+          --health-cmd "pg_isready -U sigma -d sigma"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      TEST_DATABASE_URL: postgres://sigma:sigma@127.0.0.1:5432/sigma
     steps:
       - uses: actions/checkout@v5
       - uses: actions/checkout@v5
@@ -41,11 +57,17 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Prepare PostgreSQL
+        run: ./scripts/prepare-e2e-postgres.sh
+
       - name: Build identity (host)
         run: cargo build --release -p sigma-identity
 
       - name: Start E2E stack
         run: ./scripts/e2e-stack.sh up
+
+      - name: Seed Keycloak E2E users
+        run: ./scripts/seed-keycloak-e2e-users.sh
 
       - name: Build identity in stack
         run: ./scripts/e2e-stack.sh build
