@@ -10,6 +10,7 @@
 
 use askama::Template;
 use sigma_cart_nav::render_cart_nav;
+use sigma_contact_nav::render_contact_nav;
 
 /// Resolved identity / contact URLs for a service's navbar.
 pub struct AuthLinks {
@@ -92,8 +93,7 @@ struct SiteNavTemplate<'a> {
     leading_html: &'a str,
     auth_nav: &'a str,
     cart_nav: &'a str,
-    contact_us_url: &'a str,
-    show_contact_us: bool,
+    contact_nav: &'a str,
 }
 
 /// Render the standard Sigma header actions: optional leading link, sign-in /
@@ -111,12 +111,16 @@ pub fn render_site_nav(
 ) -> Result<String, askama::Error> {
     let auth_nav = render_auth_nav(links)?;
     let cart_nav = render_cart_nav(cart_url, cart_count)?;
+    let contact_nav = if show_contact_us {
+        render_contact_nav(&links.contact_us_url)?
+    } else {
+        String::new()
+    };
     SiteNavTemplate {
         leading_html,
         auth_nav: &auth_nav,
         cart_nav: &cart_nav,
-        contact_us_url: &links.contact_us_url,
-        show_contact_us,
+        contact_nav: &contact_nav,
     }
     .render()
 }

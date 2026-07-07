@@ -4,7 +4,5 @@
   {% endif %}
   {{ auth_nav|safe }}
   {{ cart_nav|safe }}
-  {% if show_contact_us %}
-  <a class="btn btn-outline-light btn-sm" href="{{ contact_us_url|safe }}">Contact us</a>
-  {% endif %}
+  {{ contact_nav|safe }}
 </div>

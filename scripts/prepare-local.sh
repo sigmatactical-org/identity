@@ -22,6 +22,7 @@ if [[ -n "$THEME_HELPER" ]]; then
   write_askama_config "$ROOT"
   write_sigma_pg_patch "$ROOT"
   write_cart_nav_patch "$ROOT"
+  write_contact_nav_patch "$ROOT"
   build_theme_ts "$ROOT"
 else
   THEME_PATH="theme"

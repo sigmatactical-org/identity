@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 askama = "0.16.0"
 sigma-cart-nav = { git = "https://github.com/sigmatactical-org/cart.git" }
+sigma-contact-nav = { git = "https://github.com/sigmatactical-org/contact.git" }
 
 [package.metadata.askama]
 dirs = ["templates"]
