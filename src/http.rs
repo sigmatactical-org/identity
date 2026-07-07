@@ -390,15 +390,9 @@ fn proxy_path_requires_admin(path: &str) -> bool {
 
 fn security_headers(router: Router) -> Router {
     let csp = if config::is_production() {
-        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; \
-         img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; \
-         connect-src 'self'; form-action 'self'; upgrade-insecure-requests"
+        sigma_theme::public_html_csp_production("", false)
     } else {
-        // Dev/staging serves plain HTTP (kind NodePort, local docker). upgrade-insecure-requests
-        // would make browsers load CSS/JS over HTTPS and leave pages unstyled.
-        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; \
-         img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; \
-         connect-src 'self'; form-action 'self'"
+        sigma_theme::public_html_csp("", false)
     };
 
     let mut router = router
@@ -416,7 +410,7 @@ fn security_headers(router: Router) -> Router {
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("content-security-policy"),
-            HeaderValue::from_static(csp),
+            HeaderValue::from_str(&csp).expect("valid csp"),
         ))
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),
