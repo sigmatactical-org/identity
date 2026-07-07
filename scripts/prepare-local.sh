@@ -23,6 +23,7 @@ if [[ -n "$THEME_HELPER" ]]; then
   write_sigma_pg_patch "$ROOT"
   write_cart_nav_patch "$ROOT"
   write_contact_nav_patch "$ROOT"
+  write_human_check_patch "$ROOT"
   build_theme_ts "$ROOT"
 else
   THEME_PATH="theme"
@@ -40,6 +41,13 @@ EOF
 [general]
 dirs = ["templates", "$THEME_PATH/assets/templates"]
 EOF
+  if [[ -f human-check/Cargo.toml ]]; then
+    cat >>.cargo/config.toml <<EOF
+
+[patch."https://github.com/sigmatactical-org/human-check.git"]
+sigma-human-check = { path = "human-check" }
+EOF
+  fi
   (cd "$THEME_PATH/ts" && npm ci && npm run check && npm run build)
 fi
 (cd ts && npm ci && npm run check && npm run build)

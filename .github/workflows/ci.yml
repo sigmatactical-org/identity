@@ -46,6 +46,10 @@ jobs:
         with:
           repository: sigmatactical-org/sigma-pg
           path: sigma-pg
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/human-check
+          path: human-check
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -71,6 +75,10 @@ jobs:
         with:
           repository: sigmatactical-org/sigma-theme
           path: theme
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/human-check
+          path: human-check
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -91,6 +99,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/human-check
+          path: human-check
+      - name: Patch human-check dependency
+        run: |
+          mkdir -p .cargo
+          cat >.cargo/config.toml <<'EOF'
+          [patch."https://github.com/sigmatactical-org/human-check.git"]
+          sigma-human-check = { path = "human-check" }
+          EOF
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -101,6 +120,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/human-check
+          path: human-check
+      - name: Patch human-check dependency
+        run: |
+          mkdir -p .cargo
+          cat >.cargo/config.toml <<'EOF'
+          [patch."https://github.com/sigmatactical-org/human-check.git"]
+          sigma-human-check = { path = "human-check" }
+          EOF
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}

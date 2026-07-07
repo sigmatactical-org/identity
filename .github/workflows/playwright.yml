@@ -47,6 +47,10 @@ jobs:
         with:
           repository: sigmatactical-org/sigma-pg
           path: sigma-pg
+      - uses: actions/checkout@v5
+        with:
+          repository: sigmatactical-org/human-check
+          path: human-check
 
       - name: Prepare build
         run: ./scripts/prepare-local.sh
