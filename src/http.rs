@@ -491,6 +491,7 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
             admin,
             adapter,
             register_oidc,
+            sigma_human_check::HumanCheck::from_env(),
             session_layer,
         ));
     }

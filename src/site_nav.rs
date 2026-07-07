@@ -10,7 +10,6 @@ use crate::config;
 pub fn render(
     return_path: &str,
     show_contact_us: bool,
-    leading_html: &str,
     cart_count: u32,
 ) -> Result<String, askama::Error> {
     render_app_site_nav(&AppSiteNav {
@@ -21,6 +20,6 @@ pub fn render(
         cart_count,
         return_path,
         show_contact_us,
-        leading_html,
+        leading_html: "",
     })
 }

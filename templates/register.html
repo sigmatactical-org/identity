@@ -2,11 +2,6 @@
 
 {% block title %}Create account — Sigma Tactical Group{% endblock %}
 
-{% block brand %}Sigma Identity{% endblock %}
-
-{% block nav_actions %}
-{{ site_nav|safe }}
-{% endblock %}
 
 {% block main_class %}app-main{% endblock %}
 
@@ -124,6 +119,8 @@
         </div>
       </div>
 
+      {% include "widgets/human_check.html" %}
+
       <button type="submit" class="btn btn-primary">Create account</button>
     </form>
   </div>
@@ -132,4 +129,7 @@
 
 {% block extra_scripts %}
 <script src="/static/js/password-toggle.js" defer></script>
+{% if human_check_enabled %}
+<script type="module" src="/static/vendor/altcha/altcha.js"></script>
+{% endif %}
 {% endblock %}

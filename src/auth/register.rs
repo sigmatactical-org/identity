@@ -10,6 +10,7 @@ use tracing::{debug, error};
 use url::Url;
 
 use crate::config;
+use crate::human_check;
 use crate::templates;
 
 use super::{
@@ -77,11 +78,14 @@ pub(crate) struct RegisterForm {
     last_name: String,
     password: String,
     password_confirm: String,
+    #[serde(default)]
+    altcha: String,
 }
 
 #[debug_handler]
 pub(crate) async fn register_form(
     State(settings): State<RegistrationAppSettings>,
+    Extension(human_check): Extension<sigma_human_check::HumanCheck>,
     Query(params): Query<RegisterQueryParams>,
 ) -> Result<Html<String>, Response> {
     if !settings.is_return_url_allowed(&params.return_url) {
@@ -96,6 +100,7 @@ pub(crate) async fn register_form(
         first_name: params.first_name.unwrap_or_default(),
         last_name: params.last_name.unwrap_or_default(),
         error: None,
+        human_check,
     })
     .map_err(|error| *error)
 }
@@ -157,10 +162,25 @@ pub(crate) async fn register_submit(
     State(settings): State<RegistrationAppSettings>,
     Extension(keycloak): Extension<KeycloakAdmin>,
     Extension(adapter): Extension<RegistrationAdapter>,
+    Extension(human_check): Extension<sigma_human_check::HumanCheck>,
     Form(form): Form<RegisterForm>,
 ) -> Result<Response, Response> {
     if !settings.is_return_url_allowed(&form.return_url) {
         return Err((StatusCode::BAD_REQUEST, "Invalid return_url").into_response());
+    }
+
+    if let Err(err) = human_check::verify_field(&human_check, &form.altcha) {
+        return render_register_page(RegisterPage {
+            return_url: form.return_url,
+            email: form.email,
+            username: form.username,
+            first_name: form.first_name,
+            last_name: form.last_name,
+            error: Some(human_check::rejection_message(&err)),
+            human_check,
+        })
+        .map(|html| html.into_response())
+        .map_err(|error| *error);
     }
 
     if let Some(error) = validate_form(&form) {
@@ -171,6 +191,7 @@ pub(crate) async fn register_submit(
             first_name: form.first_name,
             last_name: form.last_name,
             error: Some(error),
+            human_check,
         })
         .map(|html| html.into_response())
         .map_err(|error| *error);
@@ -225,6 +246,7 @@ pub(crate) async fn register_submit(
                         first_name: form.first_name,
                         last_name: form.last_name,
                         error: Some(finalization_error_message(&finalize_error)),
+                        human_check: human_check.clone(),
                     })
                     .map(|html| html.into_response())
                     .map_err(|error| *error)
@@ -238,6 +260,7 @@ pub(crate) async fn register_submit(
             first_name: form.first_name,
             last_name: form.last_name,
             error: Some(error.to_string()),
+            human_check,
         })
         .map(|html| html.into_response())
         .map_err(|error| *error),
@@ -251,6 +274,7 @@ struct RegisterPage {
     first_name: String,
     last_name: String,
     error: Option<String>,
+    human_check: sigma_human_check::HumanCheck,
 }
 
 fn render_register_success_page(
@@ -285,6 +309,7 @@ fn render_register_page(page: RegisterPage) -> Result<Html<String>, Box<Response
         &page.first_name,
         &page.last_name,
         page.error.as_deref(),
+        &page.human_check,
     )
     .map(Html)
     .map_err(|error| {

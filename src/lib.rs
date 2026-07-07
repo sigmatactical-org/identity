@@ -20,6 +20,7 @@ mod auth;
 mod config;
 mod geo;
 mod http;
+mod human_check;
 mod monitoring;
 mod session;
 mod site_nav;

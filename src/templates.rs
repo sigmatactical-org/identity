@@ -1,13 +1,32 @@
 use askama::Template;
 use sigma_theme::copyright_years;
+use sigma_theme::nav::{Breadcrumb, SiteHeader};
+
+fn page_header(brand: &str) -> SiteHeader {
+    SiteHeader::new(brand)
+}
+
+fn section_header(section: &str) -> SiteHeader {
+    page_header("Sigma Identity")
+        .with_breadcrumb(Breadcrumb::link("/", "Identity"))
+        .with_breadcrumb(Breadcrumb::current(section))
+}
+
+fn admin_section_header(section: &str) -> SiteHeader {
+    page_header("Sigma Identity")
+        .with_breadcrumb(Breadcrumb::link("/", "Identity"))
+        .with_breadcrumb(Breadcrumb::link("/admin", "Admin"))
+        .with_breadcrumb(Breadcrumb::current(section))
+}
 
 fn site_nav(return_path: &str, show_contact_us: bool) -> Result<String, askama::Error> {
-    crate::site_nav::render(return_path, show_contact_us, "", 0)
+    crate::site_nav::render(return_path, show_contact_us, 0)
 }
 
 #[derive(Template)]
 #[template(path = "exampleapp.html")]
 struct ExampleAppTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
 }
@@ -15,6 +34,7 @@ struct ExampleAppTemplate {
 #[derive(Template)]
 #[template(path = "conformance.html")]
 struct ConformanceTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
 }
@@ -22,6 +42,7 @@ struct ConformanceTemplate {
 #[derive(Template)]
 #[template(path = "register_success.html")]
 struct RegisterSuccessTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
     return_url: String,
@@ -31,6 +52,7 @@ struct RegisterSuccessTemplate {
 #[derive(Template)]
 #[template(path = "register_verified.html")]
 struct RegisterVerifiedTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
     return_url: String,
@@ -40,6 +62,7 @@ struct RegisterVerifiedTemplate {
 #[derive(Template)]
 #[template(path = "register.html")]
 struct RegisterTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
     return_url: String,
@@ -48,6 +71,8 @@ struct RegisterTemplate {
     first_name: String,
     last_name: String,
     error: String,
+    human_check_enabled: bool,
+    human_check_challenge_url: String,
 }
 
 /// All profile field values shared by the read-only view and the edit form.
@@ -83,6 +108,7 @@ struct CountryOption {
 #[derive(Template)]
 #[template(path = "profile.html")]
 struct ProfileViewTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
     return_url: String,
@@ -95,6 +121,7 @@ struct ProfileViewTemplate {
 #[derive(Template)]
 #[template(path = "profile_edit.html")]
 struct ProfileEditTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
     return_url: String,
@@ -127,6 +154,7 @@ pub(crate) struct AdminUserRow {
 #[derive(Template)]
 #[template(path = "admin_users.html")]
 struct AdminUsersTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
     search: String,
@@ -140,6 +168,7 @@ struct AdminUsersTemplate {
 #[derive(Template)]
 #[template(path = "admin_user.html")]
 struct AdminUserTemplate {
+    site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
     user_id: String,
@@ -155,6 +184,7 @@ struct AdminUserTemplate {
 /// Returns [`askama::Error`] when template rendering fails.
 pub fn render_exampleapp_html() -> Result<String, askama::Error> {
     ExampleAppTemplate {
+        site_header: page_header("Sigma Identity"),
         site_nav: site_nav("/exampleapp/", true)?,
         copyright_years: copyright_years(),
     }
@@ -166,6 +196,7 @@ pub fn render_exampleapp_html() -> Result<String, askama::Error> {
 /// Returns [`askama::Error`] when template rendering fails.
 pub fn render_conformance_html() -> Result<String, askama::Error> {
     ConformanceTemplate {
+        site_header: page_header("Sigma Identity"),
         site_nav: site_nav("/conformance/", true)?,
         copyright_years: copyright_years(),
     }
@@ -182,8 +213,10 @@ pub fn render_register_html(
     first_name: &str,
     last_name: &str,
     error: Option<&str>,
+    human_check: &sigma_human_check::HumanCheck,
 ) -> Result<String, askama::Error> {
     RegisterTemplate {
+        site_header: section_header("Register"),
         site_nav: site_nav("/register", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
@@ -192,6 +225,8 @@ pub fn render_register_html(
         first_name: first_name.to_string(),
         last_name: last_name.to_string(),
         error: error.unwrap_or_default().to_string(),
+        human_check_enabled: human_check.is_enabled(),
+        human_check_challenge_url: "/human-check/challenge".to_string(),
     }
     .render()
 }
@@ -204,6 +239,7 @@ pub fn render_register_success_html(
     auto_approved: bool,
 ) -> Result<String, askama::Error> {
     RegisterSuccessTemplate {
+        site_header: section_header("Registration complete"),
         site_nav: site_nav("/register/success", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
@@ -220,6 +256,7 @@ pub fn render_register_verified_html(
     activated: bool,
 ) -> Result<String, askama::Error> {
     RegisterVerifiedTemplate {
+        site_header: section_header("Email verified"),
         site_nav: site_nav("/register/verified", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
@@ -263,6 +300,7 @@ pub fn render_profile_view_html(
         profile_row("Date of birth", &fields.birthdate),
     ];
     ProfileViewTemplate {
+        site_header: section_header("Profile"),
         site_nav: site_nav("/profile", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
@@ -293,6 +331,7 @@ pub fn render_profile_html(
         })
         .collect();
     ProfileEditTemplate {
+        site_header: section_header("Edit profile"),
         site_nav: site_nav("/profile", true)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
@@ -327,6 +366,7 @@ pub fn render_admin_users_html(
     users: Vec<AdminUserRow>,
 ) -> Result<String, askama::Error> {
     AdminUsersTemplate {
+        site_header: admin_section_header("Users"),
         site_nav: site_nav("/admin/users", true)?,
         copyright_years: copyright_years(),
         search: search.to_string(),
@@ -353,6 +393,7 @@ pub fn render_admin_user_html(
     rows: Vec<ProfileViewRow>,
 ) -> Result<String, askama::Error> {
     AdminUserTemplate {
+        site_header: admin_section_header(&username),
         site_nav: site_nav(&format!("/admin/users/{user_id}"), true)?,
         copyright_years: copyright_years(),
         user_id: user_id.to_string(),
@@ -394,6 +435,7 @@ mod tests {
             "Ada",
             "Lovelace",
             None,
+            &sigma_human_check::HumanCheck::disabled(),
         )
         .expect("register template");
         assert!(html.contains("sigma-dial-root"));

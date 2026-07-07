@@ -53,6 +53,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "altcha"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e7e126d41c3e0a6c85db7ba216bce5e41d53c156191c67d993613685fcc9410"
+dependencies = [
+ "digest",
+ "hex",
+ "hmac",
+ "pbkdf2",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1794,7 +1812,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.17",
  "http",
@@ -1923,6 +1941,16 @@ dependencies = [
  "redox_syscall 0.5.18",
  "smallvec",
  "windows-link",
+]
+
+[[package]]
+name = "pbkdf2"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
+dependencies = [
+ "digest",
+ "hmac",
 ]
 
 [[package]]
@@ -2776,6 +2804,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sigma-human-check"
+version = "0.1.0"
+dependencies = [
+ "altcha",
+ "base64 0.22.1",
+ "rand 0.9.4",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sigma-identity"
 version = "0.0.1"
 dependencies = [
@@ -2801,6 +2841,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sigma-cart-nav",
+ "sigma-human-check",
  "sigma-identity-nav",
  "sigma-pg",
  "sigma-theme",

@@ -327,15 +327,21 @@ pub(crate) fn register_routes<S: SessionStore + Clone + 'static>(
     keycloak_admin: KeycloakAdmin,
     registration_adapter: RegistrationAdapter,
     oidc_client: OIDCClient,
+    human_check: sigma_human_check::HumanCheck,
     session_layer: &SessionManagerLayer<S, PrivateCookie>,
 ) -> Router {
     Router::new()
+        .route(
+            "/human-check/challenge",
+            get(crate::human_check::challenge).layer(Extension(human_check.clone())),
+        )
         .route(
             "/register",
             get(register_form).post(register_submit).layer(
                 ServiceBuilder::new()
                     .layer(Extension(keycloak_admin.clone()))
-                    .layer(Extension(registration_adapter)),
+                    .layer(Extension(registration_adapter))
+                    .layer(Extension(human_check)),
             ),
         )
         .route(
