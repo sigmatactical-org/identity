@@ -96,6 +96,21 @@ fn normalize_issuer(issuer: &str) -> String {
     issuer.trim_end_matches('/').to_string()
 }
 
+/// Host (+ non-default port) and path, ignoring scheme — for split-horizon OIDC discovery.
+fn issuer_identity_key(issuer: &str) -> Option<String> {
+    let url = Url::parse(issuer).ok()?;
+    let host = url.host_str()?;
+    let path = url.path().trim_end_matches('/');
+    let port = url.port();
+    let port_suffix = match port {
+        None => String::new(),
+        Some(443) if url.scheme() == "https" => String::new(),
+        Some(80) if url.scheme() == "http" => String::new(),
+        Some(p) => format!(":{p}"),
+    };
+    Some(format!("{host}{port_suffix}{path}"))
+}
+
 fn decode_jwt_payload(id_token: &str) -> Result<Value> {
     let payload = id_token.split('.').nth(1).unwrap_or_default();
     let payload = STANDARD_NO_PAD.decode(payload)?;
@@ -214,14 +229,55 @@ impl OIDCClient {
                 .unwrap_or_else(|| self.issuer_url.clone())
         };
         debug!("Loading discovery document from {discovery_issuer}");
-        let metadata = CoreProviderMetadata::discover_async(
-            IssuerUrl::new(discovery_issuer.to_string())?,
-            &self.http_client,
-        )
-        .await
-        .with_context(|| format!("Loading issuer data from {discovery_issuer}"))?;
+        let metadata = if self.discovery_issuer_url.is_some() {
+            self.fetch_metadata_split_horizon(&discovery_issuer).await?
+        } else {
+            CoreProviderMetadata::discover_async(
+                IssuerUrl::new(discovery_issuer.clone())?,
+                &self.http_client,
+            )
+            .await
+            .with_context(|| format!("Loading issuer data from {discovery_issuer}"))?
+        };
         self.validate_issuer(&metadata, &discovery_issuer)?;
         Ok(metadata)
+    }
+
+    /// Fetch discovery from a cluster-internal URL when Keycloak advertises a public issuer.
+    async fn fetch_metadata_split_horizon(
+        &self,
+        discovery_issuer: &str,
+    ) -> Result<CoreProviderMetadata> {
+        let discovery_url = format!(
+            "{}/.well-known/openid-configuration",
+            discovery_issuer.trim_end_matches('/')
+        );
+        let response = self
+            .http_client
+            .get(&discovery_url)
+            .send()
+            .await
+            .with_context(|| format!("GET {discovery_url}"))?;
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "discovery request failed: HTTP {} from {discovery_url}",
+                response.status()
+            ));
+        }
+        let body = response
+            .bytes()
+            .await
+            .context("read discovery response body")?;
+        let mut raw: Value = serde_json::from_slice(&body).context("parse discovery JSON")?;
+        if let Some(obj) = raw.as_object_mut() {
+            obj.insert(
+                "issuer".to_string(),
+                Value::String(discovery_issuer.trim_end_matches('/').to_string()),
+            );
+        }
+        serde_json::from_value(raw).with_context(|| {
+            format!("deserialize provider metadata from {discovery_url}")
+        })
     }
 
     fn validate_issuer(
@@ -230,13 +286,19 @@ impl OIDCClient {
         discovery_issuer: &str,
     ) -> Result<()> {
         let discovered = normalize_issuer(metadata.issuer().url().as_str());
-        let expected = normalize_issuer(discovery_issuer);
-        if discovered != expected {
-            return Err(anyhow!(
-                "issuer mismatch: expected {expected}, discovered {discovered}"
-            ));
+        let expected_discovery = normalize_issuer(discovery_issuer);
+        if discovered == expected_discovery {
+            return Ok(());
         }
-        Ok(())
+        let discovered_key = issuer_identity_key(&discovered);
+        let configured_key = issuer_identity_key(&self.issuer_url);
+        if discovered_key.is_some() && discovered_key == configured_key {
+            return Ok(());
+        }
+        Err(anyhow!(
+            "issuer mismatch: expected {expected_discovery} (discovery) or configured issuer {}, discovered {discovered}",
+            self.issuer_url
+        ))
     }
 
     fn webfinger_host_and_scheme(resource: &str) -> Result<(String, String)> {
