@@ -1,6 +1,6 @@
 //! Shared header navigation for identity HTML pages.
 
-use sigma_identity_nav::{AppSiteNav, render_app_site_nav};
+use sigma_theme::site_nav::{AppSiteNav, render_app_site_nav};
 
 use crate::config;
 
@@ -19,6 +19,7 @@ pub fn render(
         cart_url: &config::cart_public_base_url(),
         cart_count,
         return_path,
+        show_cart: true,
         show_contact_us,
         leading_html: "",
     })
