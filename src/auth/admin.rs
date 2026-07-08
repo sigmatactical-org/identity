@@ -61,7 +61,10 @@ async fn require_admin(session: &Session) -> Result<SessionTokens, Response> {
     };
     let role_names = config::admin_realm_roles();
     let required_roles: Vec<&str> = role_names.iter().map(String::as_str).collect();
-    if required_roles.is_empty() || !tokens.has_any_realm_role(&required_roles) {
+    if required_roles.is_empty() {
+        return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
+    }
+    if !tokens.has_any_realm_role(&required_roles) {
         return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
     }
     Ok(tokens)

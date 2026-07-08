@@ -42,6 +42,7 @@ use crate::{
 const THEMED_INDEX_APPS: &[&str] = &["exampleapp", "conformance"];
 
 pub(crate) static HEADER_KEY_CSRF_TOKEN: &str = "x-csrf-token";
+pub(crate) static HEADER_KEY_INTERNAL_TOKEN: &str = "x-sigma-internal-token";
 
 pub(crate) type ProxyClient = hyper_util::client::legacy::Client<
     HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
@@ -295,7 +296,10 @@ async fn proxy(
         };
         let role_names = config::admin_realm_roles();
         let required_roles: Vec<&str> = role_names.iter().map(String::as_str).collect();
-        if !required_roles.is_empty() && !tokens.has_any_realm_role(&required_roles) {
+        if required_roles.is_empty() {
+            return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
+        }
+        if !tokens.has_any_realm_role(&required_roles) {
             return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
         }
     }
@@ -359,6 +363,19 @@ async fn proxy(
                     .into_response()
             })?,
     );
+    if let Some(internal_token) = sigma_pg::clients::internal::internal_token() {
+        req.headers_mut().insert(
+            HEADER_KEY_INTERNAL_TOKEN,
+            HeaderValue::from_str(&internal_token).map_err(|e| {
+                error!("Failed to set internal token header: {e:?}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Cannot proxy internal authentication",
+                )
+                    .into_response()
+            })?,
+        );
+    }
     req.headers_mut().remove(HEADER_KEY_CSRF_TOKEN);
 
     Ok(client
