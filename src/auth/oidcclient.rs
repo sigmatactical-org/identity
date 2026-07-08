@@ -275,9 +275,8 @@ impl OIDCClient {
                 Value::String(discovery_issuer.trim_end_matches('/').to_string()),
             );
         }
-        serde_json::from_value(raw).with_context(|| {
-            format!("deserialize provider metadata from {discovery_url}")
-        })
+        serde_json::from_value(raw)
+            .with_context(|| format!("deserialize provider metadata from {discovery_url}"))
     }
 
     fn validate_issuer(

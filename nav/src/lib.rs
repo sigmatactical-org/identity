@@ -139,11 +139,7 @@ mod tests {
 
     #[test]
     fn root_return_path_keeps_trailing_slash() {
-        let links = auth_links(
-            "http://identity.example",
-            "http://store.example",
-            "/",
-        );
+        let links = auth_links("http://identity.example", "http://store.example", "/");
         assert!(
             links
                 .sign_in_url
@@ -153,11 +149,7 @@ mod tests {
 
     #[test]
     fn renders_widget_with_ids() {
-        let links = auth_links(
-            "http://identity.example",
-            "http://store.example",
-            "/",
-        );
+        let links = auth_links("http://identity.example", "http://store.example", "/");
         let html = render_auth_nav(&links).expect("render");
         assert!(html.contains("id=\"store-nav-auth\""));
         assert!(html.contains("id=\"store-nav-signed-out\""));

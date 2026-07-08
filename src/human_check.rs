@@ -16,11 +16,7 @@ pub async fn challenge(Extension(check): Extension<HumanCheck>) -> Response {
         Ok(challenge) => Json(challenge).into_response(),
         Err(err) => {
             tracing::error!(?err, "failed to issue human-check challenge");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "challenge unavailable",
-            )
-                .into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, "challenge unavailable").into_response()
         }
     }
 }
@@ -35,9 +31,7 @@ pub fn rejection_message(error: &HumanCheckError) -> String {
         HumanCheckError::Rejected | HumanCheckError::Altcha(_) | HumanCheckError::Json(_) => {
             "Human verification failed. Please try again.".into()
         }
-        HumanCheckError::Config(_) => {
-            "Human verification is temporarily unavailable.".into()
-        }
+        HumanCheckError::Config(_) => "Human verification is temporarily unavailable.".into(),
     }
 }
 

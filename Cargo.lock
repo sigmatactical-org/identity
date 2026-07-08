@@ -2842,7 +2842,7 @@ dependencies = [
  "serde_json",
  "sigma-cart-nav",
  "sigma-human-check",
- "sigma-identity-nav 0.1.0",
+ "sigma-identity-nav",
  "sigma-pg",
  "sigma-theme",
  "sqlx",
@@ -2877,16 +2877,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sigma-identity-nav"
-version = "0.1.0"
-source = "git+https://github.com/sigmatactical-org/identity.git#7903047608b5c417709991ba80af33d4e484da59"
-dependencies = [
- "askama",
- "sigma-cart-nav",
- "sigma-contact-nav",
-]
-
-[[package]]
 name = "sigma-pg"
 version = "0.1.0"
 dependencies = [
@@ -2913,7 +2903,7 @@ dependencies = [
  "rust-embed",
  "sigma-cart-nav",
  "sigma-contact-nav",
- "sigma-identity-nav 0.1.0 (git+https://github.com/sigmatactical-org/identity.git)",
+ "sigma-identity-nav",
  "tower-http 0.7.0",
  "tracing",
 ]
