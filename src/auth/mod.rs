@@ -287,6 +287,12 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
         ))
         .allow_methods([Method::GET, Method::OPTIONS])
         .allow_credentials(true);
+    let csrf_cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::list(
+            app_config.login_app_settings.cors_origins().to_vec(),
+        ))
+        .allow_methods([Method::POST, Method::OPTIONS])
+        .allow_credentials(true);
 
     let mut router = Router::new()
         .route(
@@ -305,7 +311,7 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
                     .layer(Extension(oidc_client.clone())),
             ),
         )
-        .route("/csrftoken", post(csrftoken))
+        .route("/csrftoken", post(csrftoken).layer(csrf_cors))
         .route("/status", get(status).layer(status_cors))
         .route("/logout", get(logout))
         .route("/logoutcallback", get(logout_callback))

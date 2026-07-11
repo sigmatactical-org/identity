@@ -9,8 +9,8 @@ use axum::{
     Extension, Router,
     body::Body,
     http::{
-        HeaderValue, StatusCode, Uri,
-        header::{AUTHORIZATION, COOKIE, HOST},
+        HeaderName, HeaderValue, Method, StatusCode, Uri,
+        header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST},
     },
     response::{Html, IntoResponse, Response},
     routing::delete,
@@ -22,6 +22,7 @@ use hyper_rustls::HttpsConnector;
 use sqlx::PgPool;
 use tower::ServiceBuilder;
 use tower_http::{
+    cors::{AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
 };
@@ -230,6 +231,7 @@ async fn conformance_page() -> impl IntoResponse {
 fn api_proxy<S: SessionStore + Clone + 'static>(
     session_layer: &SessionManagerLayer<S, PrivateCookie>,
     proxy_config: &ProxyConfig,
+    cors_origins: Vec<HeaderValue>,
 ) -> anyhow::Result<Router> {
     proxy_config.extra_routes.iter().for_each(|er| {
         debug!("Adding extra route: {er:?}");
@@ -243,6 +245,23 @@ fn api_proxy<S: SessionStore + Clone + 'static>(
     let proxy_client: ProxyClient =
         hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
             .build(proxy_client_https);
+    let api_cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::list(cors_origins))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            AUTHORIZATION,
+            CONTENT_TYPE,
+            HeaderName::from_static("x-csrf-token"),
+            HeaderName::from_static("x-package-filename"),
+        ])
+        .allow_credentials(true);
     Ok(Router::new()
         .route(
             "/{*path}",
@@ -257,7 +276,8 @@ fn api_proxy<S: SessionStore + Clone + 'static>(
             ServiceBuilder::new()
                 .layer(session_layer.clone())
                 .layer(Extension(proxy_config.clone()))
-                .layer(Extension(proxy_client)),
+                .layer(Extension(proxy_client))
+                .layer(api_cors),
         ))
 }
 
@@ -403,6 +423,7 @@ fn proxy_path_requires_admin(path: &str) -> bool {
         || path.starts_with("contacts")
         || path.starts_with("users")
         || path.starts_with("integrations")
+        || path.starts_with("v1/packages")
 }
 
 fn security_headers(router: Router) -> Router {
@@ -474,10 +495,11 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
     let files_root_path = Path::new(&files_root);
     let spa_apps = walk_dir(&files_root)?;
     let register_oidc = oidc_client.clone();
+    let cors_origins = app_config.login_app_settings.cors_origins().to_vec();
     let mut app = Router::new()
         .route("/geo/regions", get(crate::geo::regions_handler))
         .merge(health_routes(pool.clone()))
-        .nest("/api", api_proxy(session_layer, proxy_config)?)
+        .nest("/api", api_proxy(session_layer, proxy_config, cors_origins)?)
         .nest("/app", health_routes(pool.clone()))
         .nest(
             "/auth",
