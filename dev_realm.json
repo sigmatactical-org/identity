@@ -408,7 +408,20 @@
   "webAuthnPolicyPasswordlessCreateTimeout" : 0,
   "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister" : false,
   "webAuthnPolicyPasswordlessAcceptableAaguids" : [ ],
-  "users" : [ ],
+  "users" : [ {
+    "id" : "c0ffee00-upda-4e5c-9c1i-000000000002",
+    "username" : "service-account-sigma-updates-ci",
+    "enabled" : true,
+    "emailVerified" : false,
+    "serviceAccountClientId" : "sigma-updates-ci",
+    "createdTimestamp" : 1720000000000,
+    "totp" : false,
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "sigma-admin", "default-roles-multcorp" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  } ],
   "scopeMappings" : [ {
     "clientScope" : "offline_access",
     "roles" : [ "offline_access" ]
@@ -722,6 +735,43 @@
         "jsonType.label" : "String"
       }
     } ],
+    "defaultClientScopes" : [ "web-origins", "roles", "profile", "email" ],
+    "optionalClientScopes" : [ "address", "phone", "offline_access", "microprofile-jwt" ]
+  }, {
+    "id" : "c0ffee00-upda-4e5c-9c1i-000000000001",
+    "clientId" : "sigma-updates-ci",
+    "name" : "Sigma Updates CI",
+    "description" : "OIDC client-credentials service account for wingman/updates package publish",
+    "rootUrl" : "",
+    "adminUrl" : "",
+    "baseUrl" : "",
+    "surrogateAuthRequired" : false,
+    "enabled" : true,
+    "alwaysDisplayInConsole" : false,
+    "clientAuthenticatorType" : "client-secret",
+    "secret" : "dev-sigma-updates-ci-secret-change-me",
+    "redirectUris" : [ ],
+    "webOrigins" : [ ],
+    "notBefore" : 0,
+    "bearerOnly" : false,
+    "consentRequired" : false,
+    "standardFlowEnabled" : false,
+    "implicitFlowEnabled" : false,
+    "directAccessGrantsEnabled" : false,
+    "serviceAccountsEnabled" : true,
+    "publicClient" : false,
+    "frontchannelLogout" : false,
+    "protocol" : "openid-connect",
+    "attributes" : {
+      "access.token.lifespan" : "300",
+      "client_credentials.use_refresh_token" : "false",
+      "oauth2.device.authorization.grant.enabled" : "false",
+      "oidc.ciba.grant.enabled" : "false",
+      "use.refresh.tokens" : "false"
+    },
+    "authenticationFlowBindingOverrides" : { },
+    "fullScopeAllowed" : true,
+    "nodeReRegistrationTimeout" : -1,
     "defaultClientScopes" : [ "web-origins", "roles", "profile", "email" ],
     "optionalClientScopes" : [ "address", "phone", "offline_access", "microprofile-jwt" ]
   }, {

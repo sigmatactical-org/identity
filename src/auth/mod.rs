@@ -153,7 +153,9 @@ impl SessionTokens {
     }
 }
 
-fn token_has_any_realm_role(token: &str, roles: &[&str]) -> bool {
+/// Whether a JWT access/id token payload includes any of the given realm roles.
+#[must_use]
+pub(crate) fn token_has_any_realm_role(token: &str, roles: &[&str]) -> bool {
     let Some(claims) = jwt_claims(token) else {
         return false;
     };

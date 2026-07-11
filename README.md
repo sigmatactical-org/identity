@@ -12,7 +12,7 @@ Shared site chrome comes from [sigma-theme](https://github.com/sigmatactical-org
 
 - **Authentication** — OIDC login (e.g. Keycloak), JWT stored in a PostgreSQL-backed server session, exposed to browsers via an http-only cookie
 - **Registration** — self-service account creation at `/register` (Keycloak Admin API). New accounts are created **disabled** with a `createdDate` attribute, emailed a **verify/activate** link, and enabled only after email verification.
-- **API proxy** — forward authenticated requests to backends with JWT attached; CSRF on all methods (including GET); path-based routing to multiple targets; unauthenticated requests receive 401
+- **API proxy** — forward authenticated requests to backends with JWT attached; browser session path requires CSRF; machine clients may use `Authorization: Bearer` (OIDC client-credentials JWT with `sigma-admin`) without CSRF for admin proxy paths such as `/api/v1/packages`; path-based routing to multiple targets; unauthenticated requests receive 401
 - **File serving** — serve a local directory; directories with `index.html` behave as single-page apps
 
 ## Configuration

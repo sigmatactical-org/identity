@@ -32,7 +32,7 @@ use tracing::{debug, error, warn};
 use crate::{
     auth::{
         AdminDeps, AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens,
-        auth_routes, register_routes,
+        auth_routes, register_routes, token_has_any_realm_role,
     },
     config,
     monitoring::health_routes,
@@ -306,26 +306,22 @@ async fn proxy(
     jar: CookieJar,
     mut req: axum::extract::Request,
 ) -> Result<Response, Response> {
-    verify_csrf(&session, req.headers().get(HEADER_KEY_CSRF_TOKEN)).await?;
-
-    let jwt: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
+    let session_jwt: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
+    let bearer = bearer_access_token(req.headers().get(AUTHORIZATION));
     let path = req.uri().path();
-    if proxy_path_requires_admin(path) {
-        let Some(tokens) = jwt.as_ref() else {
-            return Err((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
-        };
-        let role_names = config::admin_realm_roles();
-        let required_roles: Vec<&str> = role_names.iter().map(String::as_str).collect();
-        if required_roles.is_empty() {
-            return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
-        }
-        if !tokens.has_any_realm_role(&required_roles) {
-            return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
-        }
-    }
 
-    let session_tokens =
-        jwt.ok_or_else(|| (StatusCode::UNAUTHORIZED, "Authentication required").into_response())?;
+    let access_token = if let Some(ref tokens) = session_jwt {
+        // Browser / session path: CSRF required.
+        verify_csrf(&session, req.headers().get(HEADER_KEY_CSRF_TOKEN)).await?;
+        ensure_proxy_admin_access(path, |roles| tokens.has_any_realm_role(roles))?;
+        tokens.access_token().to_string()
+    } else if let Some(token) = bearer {
+        // Machine path (OIDC client-credentials): no CSRF; roles from JWT.
+        ensure_proxy_admin_access(path, |roles| token_has_any_realm_role(&token, roles))?;
+        token
+    } else {
+        return Err((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
+    };
 
     let path_query = req
         .uri()
@@ -371,17 +367,16 @@ async fn proxy(
         );
     }
 
-    req.headers_mut().append(
+    req.headers_mut().insert(
         AUTHORIZATION,
-        HeaderValue::from_bytes(format!("Bearer {}", session_tokens.access_token()).as_bytes())
-            .map_err(|e| {
-                error!("Failed to set authorization header: {e:?}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Cannot proxy authentication",
-                )
-                    .into_response()
-            })?,
+        HeaderValue::from_bytes(format!("Bearer {access_token}").as_bytes()).map_err(|e| {
+            error!("Failed to set authorization header: {e:?}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Cannot proxy authentication",
+            )
+                .into_response()
+        })?,
     );
     if let Some(internal_token) = sigma_pg::clients::internal::internal_token() {
         req.headers_mut().insert(
@@ -412,6 +407,37 @@ async fn proxy(
         .into_response())
 }
 
+fn bearer_access_token(header: Option<&HeaderValue>) -> Option<String> {
+    let raw = header?.to_str().ok()?.trim();
+    let token = raw
+        .strip_prefix("Bearer ")
+        .or_else(|| raw.strip_prefix("bearer "))?
+        .trim();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token.to_string())
+    }
+}
+
+fn ensure_proxy_admin_access(
+    path: &str,
+    has_role: impl FnOnce(&[&str]) -> bool,
+) -> Result<(), Response> {
+    if !proxy_path_requires_admin(path) {
+        return Ok(());
+    }
+    let role_names = config::admin_realm_roles();
+    let required_roles: Vec<&str> = role_names.iter().map(String::as_str).collect();
+    if required_roles.is_empty() {
+        return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
+    }
+    if !has_role(&required_roles) {
+        return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
+    }
+    Ok(())
+}
+
 fn proxy_path_requires_admin(path: &str) -> bool {
     let path = path.trim_start_matches('/').trim_start_matches("api/");
     path.starts_with("admin")
@@ -424,6 +450,55 @@ fn proxy_path_requires_admin(path: &str) -> bool {
         || path.starts_with("users")
         || path.starts_with("integrations")
         || path.starts_with("v1/packages")
+}
+
+#[cfg(test)]
+mod proxy_auth_tests {
+    use super::{bearer_access_token, ensure_proxy_admin_access, proxy_path_requires_admin};
+    use axum::http::{HeaderValue, StatusCode};
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    fn fake_jwt(payload: &str) -> String {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
+        let body = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        format!("{header}.{body}.")
+    }
+
+    #[test]
+    fn bearer_access_token_parses_header() {
+        let value = HeaderValue::from_static("Bearer abc.def.ghi");
+        assert_eq!(
+            bearer_access_token(Some(&value)).as_deref(),
+            Some("abc.def.ghi")
+        );
+        assert!(bearer_access_token(None).is_none());
+        assert!(bearer_access_token(Some(&HeaderValue::from_static("Basic x"))).is_none());
+    }
+
+    #[test]
+    fn packages_path_requires_admin() {
+        assert!(proxy_path_requires_admin("/api/v1/packages"));
+        assert!(proxy_path_requires_admin("/v1/packages"));
+        assert!(!proxy_path_requires_admin("/v1/channels"));
+    }
+
+    #[test]
+    fn ensure_proxy_admin_rejects_missing_role() {
+        let err = ensure_proxy_admin_access("/api/v1/packages", |_| false).unwrap_err();
+        assert_eq!(err.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn ensure_proxy_admin_accepts_matching_role() {
+        let token = fake_jwt(r#"{"realm_access":{"roles":["sigma-admin"]}}"#);
+        assert!(
+            ensure_proxy_admin_access("/api/v1/packages", |roles| {
+                crate::auth::token_has_any_realm_role(&token, roles)
+            })
+            .is_ok()
+        );
+    }
 }
 
 fn security_headers(router: Router) -> Router {
