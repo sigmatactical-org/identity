@@ -499,7 +499,10 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
     let mut app = Router::new()
         .route("/geo/regions", get(crate::geo::regions_handler))
         .merge(health_routes(pool.clone()))
-        .nest("/api", api_proxy(session_layer, proxy_config, cors_origins)?)
+        .nest(
+            "/api",
+            api_proxy(session_layer, proxy_config, cors_origins)?,
+        )
         .nest("/app", health_routes(pool.clone()))
         .nest(
             "/auth",
