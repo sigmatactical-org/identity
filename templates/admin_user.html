@@ -38,6 +38,23 @@
       <form method="post" action="/admin/users/{{ user_id }}/reset-password">
         <button type="submit" class="btn btn-outline-secondary">Send password reset email</button>
       </form>
+      {% if !email_verified %}
+      <form method="post" action="/admin/users/{{ user_id }}/notify">
+        <button type="submit" class="btn btn-outline-secondary">Resend verification email</button>
+      </form>
+      {% endif %}
+      {% if enabled %}
+      <form method="post" action="/admin/users/{{ user_id }}/disable" onsubmit="return confirm('Disable this account?');">
+        <button type="submit" class="btn btn-outline-warning">Disable account</button>
+      </form>
+      {% else %}
+      <form method="post" action="/admin/users/{{ user_id }}/enable">
+        <button type="submit" class="btn btn-outline-success">Enable account</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/admin/users/{{ user_id }}/delete" onsubmit="return confirm('Delete this account? This cannot be undone.');">
+        <button type="submit" class="btn btn-outline-danger">Delete account</button>
+      </form>
     </div>
   </div>
 </div>

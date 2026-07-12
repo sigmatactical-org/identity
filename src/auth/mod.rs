@@ -43,7 +43,10 @@ use openidconnect::{
 use serde::{Deserialize, Serialize};
 
 use self::{
-    admin::{admin_user_approve, admin_user_detail, admin_user_list, admin_user_reset_password},
+    admin::{
+        admin_user_approve, admin_user_delete, admin_user_detail, admin_user_disable,
+        admin_user_enable, admin_user_list, admin_user_notify, admin_user_reset_password,
+    },
     callback::callback,
     csrftoken::csrftoken,
     login::login,
@@ -397,7 +400,23 @@ pub(crate) fn admin_routes<S: SessionStore + Clone + 'static>(
         )
         .route(
             "/admin/users/{user_id}/reset-password",
-            post(admin_user_reset_password).layer(Extension(keycloak_admin)),
+            post(admin_user_reset_password).layer(Extension(keycloak_admin.clone())),
+        )
+        .route(
+            "/admin/users/{user_id}/disable",
+            post(admin_user_disable).layer(Extension(keycloak_admin.clone())),
+        )
+        .route(
+            "/admin/users/{user_id}/enable",
+            post(admin_user_enable).layer(Extension(keycloak_admin.clone())),
+        )
+        .route(
+            "/admin/users/{user_id}/delete",
+            post(admin_user_delete).layer(Extension(keycloak_admin.clone())),
+        )
+        .route(
+            "/admin/users/{user_id}/notify",
+            post(admin_user_notify).layer(Extension(keycloak_admin)),
         )
         .layer(session_layer.clone())
 }

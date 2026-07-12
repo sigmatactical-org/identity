@@ -334,7 +334,7 @@ fn validate_form(form: &RegisterForm) -> Option<String> {
     None
 }
 
-fn verification_redirect_uri(user_id: &str) -> String {
+pub(crate) fn verification_redirect_uri(user_id: &str) -> String {
     format!(
         "{}/register/verified/{}",
         config::public_base_url().trim_end_matches('/'),

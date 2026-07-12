@@ -176,6 +176,7 @@ struct AdminUsersTemplate {
     prev_page: u32,
     next_page: u32,
     users: Vec<AdminUserRow>,
+    notice: String,
 }
 
 #[derive(Template)]
@@ -396,6 +397,7 @@ pub fn render_admin_users_html(
     has_prev: bool,
     has_next: bool,
     users: Vec<AdminUserRow>,
+    notice: Option<&str>,
 ) -> Result<String, askama::Error> {
     AdminUsersTemplate {
         site_header: admin_section_header("Users"),
@@ -407,6 +409,7 @@ pub fn render_admin_users_html(
         prev_page: page.saturating_sub(1),
         next_page: page + 1,
         users,
+        notice: notice.unwrap_or_default().to_string(),
     }
     .render()
 }
@@ -470,6 +473,35 @@ mod tests {
             sign_in_pos < register_pos,
             "Sign in should appear above Register"
         );
+    }
+
+    #[test]
+    fn admin_user_shows_disable_and_delete_for_enabled_verified_account() {
+        let html = render_admin_user_html("u1", "alice".to_string(), true, true, None, Vec::new())
+            .expect("admin user template");
+        assert!(html.contains("/admin/users/u1/disable"));
+        assert!(html.contains("/admin/users/u1/delete"));
+        assert!(!html.contains("/admin/users/u1/enable\""));
+        assert!(!html.contains("/admin/users/u1/notify"));
+        assert!(!html.contains("Approve account"));
+    }
+
+    #[test]
+    fn admin_user_shows_enable_notify_and_approve_for_disabled_unverified_account() {
+        let html =
+            render_admin_user_html("u1", "alice".to_string(), false, false, None, Vec::new())
+                .expect("admin user template");
+        assert!(html.contains("/admin/users/u1/enable"));
+        assert!(html.contains("/admin/users/u1/notify"));
+        assert!(html.contains("Approve account"));
+        assert!(!html.contains("/admin/users/u1/disable\""));
+    }
+
+    #[test]
+    fn admin_users_list_shows_notice() {
+        let html = render_admin_users_html("", 0, false, false, Vec::new(), Some("Deleted."))
+            .expect("admin users template");
+        assert!(html.contains("Deleted."));
     }
 
     #[test]

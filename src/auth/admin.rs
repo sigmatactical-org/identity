@@ -28,6 +28,8 @@ pub(crate) struct AdminListQuery {
     q: String,
     #[serde(default)]
     page: u32,
+    #[serde(default)]
+    notice: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -98,6 +100,9 @@ fn notice_message(notice: &str) -> Option<&'static str> {
     match notice {
         "approved" => Some("Account approved."),
         "reset_sent" => Some("Password reset email sent."),
+        "disabled" => Some("Account disabled."),
+        "enabled" => Some("Account enabled."),
+        "notified" => Some("Verification email sent."),
         _ => None,
     }
 }
@@ -148,6 +153,7 @@ pub(crate) async fn admin_user_list(
         page > 0,
         rows.len() == page_size as usize,
         rows,
+        notice_message(&query.notice),
     )
     .map_err(|error| {
         error!("Failed to render admin user list: {error}");
@@ -314,6 +320,98 @@ pub(crate) async fn admin_user_reset_password(
     Ok(Redirect::to(&format!("/admin/users/{user_id}?notice=reset_sent")).into_response())
 }
 
+#[debug_handler]
+pub(crate) async fn admin_user_disable(
+    Extension(keycloak): Extension<KeycloakAdmin>,
+    session: Session,
+    Path(user_id): Path<String>,
+) -> Result<Response, Response> {
+    require_admin(&session).await?;
+    keycloak
+        .set_user_enabled(&user_id, false)
+        .await
+        .map_err(|error| {
+            error!("Failed to disable user {user_id}: {error:?}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Unable to disable account.",
+            )
+                .into_response()
+        })?;
+    Ok(Redirect::to(&format!("/admin/users/{user_id}?notice=disabled")).into_response())
+}
+
+#[debug_handler]
+pub(crate) async fn admin_user_enable(
+    Extension(keycloak): Extension<KeycloakAdmin>,
+    session: Session,
+    Path(user_id): Path<String>,
+) -> Result<Response, Response> {
+    require_admin(&session).await?;
+    keycloak
+        .set_user_enabled(&user_id, true)
+        .await
+        .map_err(|error| {
+            error!("Failed to enable user {user_id}: {error:?}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Unable to enable account.",
+            )
+                .into_response()
+        })?;
+    Ok(Redirect::to(&format!("/admin/users/{user_id}?notice=enabled")).into_response())
+}
+
+#[debug_handler]
+pub(crate) async fn admin_user_delete(
+    Extension(keycloak): Extension<KeycloakAdmin>,
+    session: Session,
+    Path(user_id): Path<String>,
+) -> Result<Response, Response> {
+    require_admin(&session).await?;
+    keycloak.delete_user(&user_id).await.map_err(|error| {
+        error!("Failed to delete user {user_id}: {error:?}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unable to delete account.",
+        )
+            .into_response()
+    })?;
+    Ok(Redirect::to("/admin/users?notice=deleted").into_response())
+}
+
+#[debug_handler]
+pub(crate) async fn admin_user_notify(
+    Extension(keycloak): Extension<KeycloakAdmin>,
+    session: Session,
+    Path(user_id): Path<String>,
+) -> Result<Response, Response> {
+    require_admin(&session).await?;
+    let account = keycloak.get_user(&user_id).await.map_err(|error| {
+        error!("Failed to load account {user_id}: {error:?}");
+        (StatusCode::NOT_FOUND, "User not found.").into_response()
+    })?;
+    let redirect_uri = super::register::verification_redirect_uri(&user_id);
+    let result = if account.enabled {
+        keycloak
+            .send_verification_email(&user_id, &redirect_uri)
+            .await
+    } else {
+        keycloak
+            .send_verification_email_while_disabled(&user_id, &redirect_uri)
+            .await
+    };
+    result.map_err(|error| {
+        error!("Failed to send verification email for {user_id}: {error:?}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unable to send verification email.",
+        )
+            .into_response()
+    })?;
+    Ok(Redirect::to(&format!("/admin/users/{user_id}?notice=notified")).into_response())
+}
+
 fn attribute_value(
     attributes: &Option<std::collections::HashMap<String, Vec<String>>>,
     key: &str,
@@ -340,6 +438,9 @@ mod tests {
             notice_message("reset_sent"),
             Some("Password reset email sent.")
         );
+        assert_eq!(notice_message("disabled"), Some("Account disabled."));
+        assert_eq!(notice_message("enabled"), Some("Account enabled."));
+        assert_eq!(notice_message("notified"), Some("Verification email sent."));
         assert_eq!(notice_message(""), None);
     }
 }
