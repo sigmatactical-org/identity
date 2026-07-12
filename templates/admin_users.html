@@ -75,5 +75,35 @@
     <a class="btn btn-outline-secondary btn-sm" href="/admin/users?page={{ next_page }}{% if search != "" %}&amp;q={{ search }}{% endif %}">Next</a>
     {% endif %}
   </div>
+
+  {% if !service_accounts.is_empty() %}
+  <h2 class="mt-5">Service accounts</h2>
+  <p class="lead">One per client with service accounts enabled.</p>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Client ID</th>
+          <th>Username</th>
+          <th>Enabled</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for account in service_accounts %}
+        <tr>
+          <td>{{ account.client_id }}</td>
+          <td>{{ account.username }}</td>
+          <td>{% if account.enabled %}Yes{% else %}<span class="text-warning">No</span>{% endif %}</td>
+          <td class="text-secondary small">{{ account.created }}</td>
+          <td><a class="btn btn-outline-primary btn-sm" href="/admin/users/{{ account.id }}">Details</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

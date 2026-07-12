@@ -147,12 +147,34 @@ pub(crate) async fn admin_user_list(
             created: format_timestamp_ms(user.created_timestamp),
         })
         .collect();
+    let service_account_rows = if page == 0 && search.is_empty() {
+        keycloak
+            .list_service_accounts()
+            .await
+            .map_err(|error| {
+                error!("Failed to list service accounts: {error:?}");
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let service_account_rows: Vec<templates::AdminServiceAccountRow> = service_account_rows
+        .into_iter()
+        .map(|row| templates::AdminServiceAccountRow {
+            id: row.user.id,
+            client_id: row.client_id,
+            username: row.user.username.unwrap_or_default(),
+            enabled: row.user.enabled,
+            created: format_timestamp_ms(row.user.created_timestamp),
+        })
+        .collect();
     let html = templates::render_admin_users_html(
         search,
         page,
         page > 0,
         rows.len() == page_size as usize,
         rows,
+        service_account_rows,
         notice_message(&query.notice),
     )
     .map_err(|error| {

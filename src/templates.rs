@@ -164,6 +164,15 @@ pub(crate) struct AdminUserRow {
     pub created: String,
 }
 
+/// A client's service-account user, for the admin "Service accounts" table.
+pub(crate) struct AdminServiceAccountRow {
+    pub id: String,
+    pub client_id: String,
+    pub username: String,
+    pub enabled: bool,
+    pub created: String,
+}
+
 #[derive(Template)]
 #[template(path = "admin_users.html")]
 struct AdminUsersTemplate {
@@ -176,6 +185,7 @@ struct AdminUsersTemplate {
     prev_page: u32,
     next_page: u32,
     users: Vec<AdminUserRow>,
+    service_accounts: Vec<AdminServiceAccountRow>,
     notice: String,
 }
 
@@ -397,6 +407,7 @@ pub fn render_admin_users_html(
     has_prev: bool,
     has_next: bool,
     users: Vec<AdminUserRow>,
+    service_accounts: Vec<AdminServiceAccountRow>,
     notice: Option<&str>,
 ) -> Result<String, askama::Error> {
     AdminUsersTemplate {
@@ -409,6 +420,7 @@ pub fn render_admin_users_html(
         prev_page: page.saturating_sub(1),
         next_page: page + 1,
         users,
+        service_accounts,
         notice: notice.unwrap_or_default().to_string(),
     }
     .render()
@@ -499,9 +511,39 @@ mod tests {
 
     #[test]
     fn admin_users_list_shows_notice() {
-        let html = render_admin_users_html("", 0, false, false, Vec::new(), Some("Deleted."))
-            .expect("admin users template");
+        let html = render_admin_users_html(
+            "",
+            0,
+            false,
+            false,
+            Vec::new(),
+            Vec::new(),
+            Some("Deleted."),
+        )
+        .expect("admin users template");
         assert!(html.contains("Deleted."));
+    }
+
+    #[test]
+    fn admin_users_list_shows_service_accounts() {
+        let html = render_admin_users_html(
+            "",
+            0,
+            false,
+            false,
+            Vec::new(),
+            vec![AdminServiceAccountRow {
+                id: "sa-1".to_string(),
+                client_id: "sigma-updates-ci".to_string(),
+                username: "service-account-sigma-updates-ci".to_string(),
+                enabled: true,
+                created: "2026-01-01".to_string(),
+            }],
+            None,
+        )
+        .expect("admin users template");
+        assert!(html.contains("sigma-updates-ci"));
+        assert!(html.contains("/admin/users/sa-1"));
     }
 
     #[test]

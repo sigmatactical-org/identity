@@ -74,6 +74,21 @@ pub(crate) struct UserSummary {
     pub created_timestamp: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClientSummary {
+    id: String,
+    client_id: String,
+    #[serde(default)]
+    service_accounts_enabled: bool,
+}
+
+/// A client's service-account user, labeled with the owning client id.
+pub(crate) struct ServiceAccountRow {
+    pub client_id: String,
+    pub user: UserSummary,
+}
+
 // Keycloak custom user-profile attribute keys. These must also be declared in
 // the realm's user-profile config (see dev_realm.json) or Keycloak rejects
 // writes to them.
@@ -549,6 +564,65 @@ impl KeycloakAdmin {
             .await
             .context("Failed to read Keycloak list users response")?;
         serde_json::from_str(&body).context("Failed to parse Keycloak list users response")
+    }
+
+    /// Service accounts (one per client with "Service accounts enabled") don't
+    /// appear in `list_users`'s realm-wide search — Keycloak excludes them from
+    /// that endpoint. List clients that have one, then fetch each service
+    /// account's user record directly by client.
+    pub(crate) async fn list_service_accounts(&self) -> Result<Vec<ServiceAccountRow>> {
+        let token = self.access_token().await?;
+        let clients_url = format!(
+            "{}/admin/realms/{}/clients",
+            self.server_base.trim_end_matches('/'),
+            self.realm
+        );
+        let response = self
+            .http_client
+            .get(&clients_url)
+            .query(&[("fields", "id,clientId,serviceAccountsEnabled")])
+            .bearer_auth(&token)
+            .send()
+            .await
+            .context("Keycloak list clients request failed")?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            bail!("Keycloak list clients failed with HTTP {status}: {body}");
+        }
+        let clients: Vec<ClientSummary> = response
+            .json()
+            .await
+            .context("Failed to parse Keycloak list clients response")?;
+
+        let mut rows = Vec::new();
+        for client in clients.into_iter().filter(|c| c.service_accounts_enabled) {
+            let url = format!(
+                "{}/admin/realms/{}/clients/{}/service-account-user",
+                self.server_base.trim_end_matches('/'),
+                self.realm,
+                client.id
+            );
+            let response = self
+                .http_client
+                .get(&url)
+                .bearer_auth(&token)
+                .send()
+                .await
+                .context("Keycloak service-account-user request failed")?;
+            if !response.status().is_success() {
+                continue;
+            }
+            let user: UserSummary = response
+                .json()
+                .await
+                .context("Failed to parse Keycloak service-account-user response")?;
+            rows.push(ServiceAccountRow {
+                client_id: client.client_id,
+                user,
+            });
+        }
+        Ok(rows)
     }
 
     /// Email the user a link to choose a new password (Keycloak `UPDATE_PASSWORD`).
