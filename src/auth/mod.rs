@@ -23,7 +23,7 @@ pub(crate) use profile::ProfileDeps;
 pub use register::{RegistrationAppSettings, RegistrationDeps};
 pub(crate) use registration_adapter::RegistrationAdapter;
 
-pub(crate) use admin::AdminDeps;
+pub(crate) use admin::{AdminDeps, is_admin};
 pub(crate) use keycloak_admin::{KeycloakAdmin, ProfileInput};
 
 use axum::http::Method;

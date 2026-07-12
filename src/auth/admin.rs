@@ -55,16 +55,26 @@ fn admin_login_redirect() -> Redirect {
     Redirect::to(login_url.as_str())
 }
 
+fn tokens_are_admin(tokens: &SessionTokens) -> bool {
+    let role_names = config::admin_realm_roles();
+    let required_roles: Vec<&str> = role_names.iter().map(String::as_str).collect();
+    !required_roles.is_empty() && tokens.has_any_realm_role(&required_roles)
+}
+
+/// Whether the current session belongs to an admin, without redirecting or
+/// erroring when it doesn't (unlike [`require_admin`]) — for pages that only
+/// conditionally show admin affordances.
+pub(crate) async fn is_admin(session: &Session) -> bool {
+    session_tokens(session)
+        .await
+        .is_some_and(|tokens| tokens_are_admin(&tokens))
+}
+
 async fn require_admin(session: &Session) -> Result<SessionTokens, Response> {
     let Some(tokens) = session_tokens(session).await else {
         return Err(admin_login_redirect().into_response());
     };
-    let role_names = config::admin_realm_roles();
-    let required_roles: Vec<&str> = role_names.iter().map(String::as_str).collect();
-    if required_roles.is_empty() {
-        return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
-    }
-    if !tokens.has_any_realm_role(&required_roles) {
+    if !tokens_are_admin(&tokens) {
         return Err((StatusCode::FORBIDDEN, "Administrator access required.").into_response());
     }
     Ok(tokens)

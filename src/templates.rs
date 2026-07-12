@@ -24,6 +24,15 @@ fn site_nav(return_path: &str, show_contact_us: bool) -> Result<String, askama::
 }
 
 #[derive(Template)]
+#[template(path = "index.html")]
+struct IndexTemplate {
+    site_header: SiteHeader,
+    site_nav: String,
+    copyright_years: String,
+    is_admin: bool,
+}
+
+#[derive(Template)]
 #[template(path = "exampleapp.html")]
 struct ExampleAppTemplate {
     site_header: SiteHeader,
@@ -177,6 +186,19 @@ struct AdminUserTemplate {
     email_verified: bool,
     notice: String,
     rows: Vec<ProfileViewRow>,
+}
+
+/// # Errors
+///
+/// Returns [`askama::Error`] when template rendering fails.
+pub fn render_index_html(is_admin: bool) -> Result<String, askama::Error> {
+    IndexTemplate {
+        site_header: page_header("Sigma Identity"),
+        site_nav: site_nav("/", true)?,
+        copyright_years: copyright_years(),
+        is_admin,
+    }
+    .render()
 }
 
 /// # Errors
@@ -409,6 +431,20 @@ pub fn render_admin_user_html(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_hides_admin_section_for_anonymous_visitor() {
+        let html = render_index_html(false).expect("index template");
+        assert!(html.contains("sigma-dial-root"));
+        assert!(!html.contains("href=\"/admin/users\""));
+    }
+
+    #[test]
+    fn index_shows_users_link_for_admin() {
+        let html = render_index_html(true).expect("index template");
+        assert!(html.contains("href=\"/admin/users\""));
+        assert!(html.contains(">Users<"));
+    }
 
     #[test]
     fn exampleapp_extends_sigma_theme_base() {

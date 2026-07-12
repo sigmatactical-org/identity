@@ -32,7 +32,7 @@ use tracing::{debug, error, warn};
 use crate::{
     auth::{
         AdminDeps, AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens,
-        auth_routes, register_routes, token_has_any_realm_role,
+        auth_routes, is_admin, register_routes, token_has_any_realm_role,
     },
     config,
     monitoring::health_routes,
@@ -206,6 +206,16 @@ fn mount_themed_app_assets(mut app: Router, files_root: &Path) -> Router {
         }
     }
     app
+}
+
+async fn home_page(session: Session) -> impl IntoResponse {
+    match templates::render_index_html(is_admin(&session).await) {
+        Ok(html) => Html(html).into_response(),
+        Err(error) => {
+            error!("Failed to render home page: {error}");
+            sigma_theme::axum::internal_server_error().await
+        }
+    }
 }
 
 async fn exampleapp_page() -> impl IntoResponse {
@@ -420,6 +430,9 @@ fn bearer_access_token(header: Option<&HeaderValue>) -> Option<String> {
     }
 }
 
+// `Response` is ~128 bytes; boxing it here would ripple `?`-based error
+// propagation through call sites that otherwise use bare `Response` errors.
+#[allow(clippy::result_large_err)]
 fn ensure_proxy_admin_access(
     path: &str,
     has_role: impl FnOnce(&[&str]) -> bool,
@@ -450,55 +463,6 @@ fn proxy_path_requires_admin(path: &str) -> bool {
         || path.starts_with("users")
         || path.starts_with("integrations")
         || path.starts_with("v1/packages")
-}
-
-#[cfg(test)]
-mod proxy_auth_tests {
-    use super::{bearer_access_token, ensure_proxy_admin_access, proxy_path_requires_admin};
-    use axum::http::{HeaderValue, StatusCode};
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-
-    fn fake_jwt(payload: &str) -> String {
-        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
-        let body = URL_SAFE_NO_PAD.encode(payload.as_bytes());
-        format!("{header}.{body}.")
-    }
-
-    #[test]
-    fn bearer_access_token_parses_header() {
-        let value = HeaderValue::from_static("Bearer abc.def.ghi");
-        assert_eq!(
-            bearer_access_token(Some(&value)).as_deref(),
-            Some("abc.def.ghi")
-        );
-        assert!(bearer_access_token(None).is_none());
-        assert!(bearer_access_token(Some(&HeaderValue::from_static("Basic x"))).is_none());
-    }
-
-    #[test]
-    fn packages_path_requires_admin() {
-        assert!(proxy_path_requires_admin("/api/v1/packages"));
-        assert!(proxy_path_requires_admin("/v1/packages"));
-        assert!(!proxy_path_requires_admin("/v1/channels"));
-    }
-
-    #[test]
-    fn ensure_proxy_admin_rejects_missing_role() {
-        let err = ensure_proxy_admin_access("/api/v1/packages", |_| false).unwrap_err();
-        assert_eq!(err.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[test]
-    fn ensure_proxy_admin_accepts_matching_role() {
-        let token = fake_jwt(r#"{"realm_access":{"roles":["sigma-admin"]}}"#);
-        assert!(
-            ensure_proxy_admin_access("/api/v1/packages", |roles| {
-                crate::auth::token_has_any_realm_role(&token, roles)
-            })
-            .is_ok()
-        );
-    }
 }
 
 fn security_headers(router: Router) -> Router {
@@ -588,7 +552,12 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
                 app_config,
             ),
         )
-        .merge(sigma_theme::axum::router())
+        .merge(
+            Router::new()
+                .route("/", get(home_page))
+                .layer(session_layer.clone()),
+        )
+        .merge(sigma_theme::axum::asset_router())
         .merge(themed_page_routes());
 
     if let Some(RegistrationDeps {
@@ -643,4 +612,53 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         app.fallback(sigma_theme::axum::not_found)
             .layer(sigma_theme::axum::catch_panic_layer()),
     ))
+}
+
+#[cfg(test)]
+mod proxy_auth_tests {
+    use super::{bearer_access_token, ensure_proxy_admin_access, proxy_path_requires_admin};
+    use axum::http::{HeaderValue, StatusCode};
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    fn fake_jwt(payload: &str) -> String {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
+        let body = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        format!("{header}.{body}.")
+    }
+
+    #[test]
+    fn bearer_access_token_parses_header() {
+        let value = HeaderValue::from_static("Bearer abc.def.ghi");
+        assert_eq!(
+            bearer_access_token(Some(&value)).as_deref(),
+            Some("abc.def.ghi")
+        );
+        assert!(bearer_access_token(None).is_none());
+        assert!(bearer_access_token(Some(&HeaderValue::from_static("Basic x"))).is_none());
+    }
+
+    #[test]
+    fn packages_path_requires_admin() {
+        assert!(proxy_path_requires_admin("/api/v1/packages"));
+        assert!(proxy_path_requires_admin("/v1/packages"));
+        assert!(!proxy_path_requires_admin("/v1/channels"));
+    }
+
+    #[test]
+    fn ensure_proxy_admin_rejects_missing_role() {
+        let err = ensure_proxy_admin_access("/api/v1/packages", |_| false).unwrap_err();
+        assert_eq!(err.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn ensure_proxy_admin_accepts_matching_role() {
+        let token = fake_jwt(r#"{"realm_access":{"roles":["sigma-admin"]}}"#);
+        assert!(
+            ensure_proxy_admin_access("/api/v1/packages", |roles| {
+                crate::auth::token_has_any_realm_role(&token, roles)
+            })
+            .is_ok()
+        );
+    }
 }
