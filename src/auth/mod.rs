@@ -723,6 +723,7 @@ mod tests {
                 secret: session_secret.clone(),
                 cookie_name: cookie_name.clone(),
                 cookie_path: "/".to_string(),
+                cookie_domain: None,
                 ttl: Some(time::Duration::new(300, 0)),
                 secure_cookie: true,
                 same_site: crate::SameSiteSetting::Strict,

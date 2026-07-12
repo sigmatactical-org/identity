@@ -90,6 +90,7 @@ fn init_session_vars() -> anyhow::Result<SessionSetup> {
             .unwrap_or_else(|| "identity.sid".to_string()),
         cookie_path: crate::config::var_optional("SESSION_COOKIE_PATH")
             .unwrap_or_else(|| "/".to_string()),
+        cookie_domain: crate::config::var_optional("SESSION_COOKIE_DOMAIN"),
         secret,
         ttl: None,
         secure_cookie: !secure_disabled,

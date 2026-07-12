@@ -46,6 +46,7 @@ pub(crate) struct SessionSetup {
     pub(crate) secret: String,
     pub(crate) cookie_name: String,
     pub(crate) cookie_path: String,
+    pub(crate) cookie_domain: Option<String>,
     pub(crate) ttl: Option<Duration>,
     pub(crate) secure_cookie: bool,
     pub(crate) same_site: SameSiteSetting,
@@ -57,7 +58,7 @@ impl SessionSetup {
         store: Store,
     ) -> Result<SessionManagerLayer<Store, PrivateCookie>> {
         debug!("Preparing session");
-        let session_layer = SessionManagerLayer::new(store)
+        let mut session_layer = SessionManagerLayer::new(store)
             .with_private(Key::from(self.secret.as_bytes()))
             .with_name(self.cookie_name.clone())
             .with_secure(self.secure_cookie)
@@ -66,6 +67,9 @@ impl SessionSetup {
             .with_expiry(Expiry::OnInactivity(
                 self.ttl.unwrap_or_else(|| Duration::hours(1)),
             ));
+        if let Some(domain) = self.cookie_domain.clone() {
+            session_layer = session_layer.with_domain(domain);
+        }
 
         Ok(session_layer)
     }
