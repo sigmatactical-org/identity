@@ -3,25 +3,30 @@
 {% block title %}Sigma Identity{% endblock %}
 
 
-{% block main_class %}app-main{% endblock %}
+{% block main_class %}home-main{% endblock %}
 
 {% block content %}
-<div class="container">
-  <div class="register-card">
-    <h1>Sigma Identity</h1>
-    <p class="lead">Sign-in, registration, and account services for Sigma Tactical Group applications.</p>
-  </div>
+      <div class="hero-shell site-directory-shell">
+        <div class="hero-content-layer site-directory-layer">
+          <header class="site-directory-header">
+            <h1><span class="brand-wordmark">Sigma Identity</span></h1>
+            <p class="site-directory-lead">Sign-in, registration, and account services for Sigma Tactical Group applications.</p>
+          </header>
 
-  {% if is_admin %}
-  <div class="mt-4">
-    <h2 class="h5 mb-2">Admin</h2>
-    <a class="card w-100 text-decoration-none" href="/admin/users">
-      <div class="card-body">
-        <h3 class="h6 card-title mb-1">Users</h3>
-        <p class="card-text text-muted mb-0">View and manage registered accounts in this realm.</p>
+          {% if is_admin %}
+          <nav class="site-directory" aria-label="Admin">
+            <ul class="site-directory-list">
+              <li>
+                <a class="site-directory-card" href="/admin/users">
+                  <span class="site-directory-name">Users</span>
+                  <span class="site-directory-meta">
+                    <span class="site-directory-desc">View and manage registered accounts in this realm.</span>
+                  </span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+          {% endif %}
+        </div>
       </div>
-    </a>
-  </div>
-  {% endif %}
-</div>
 {% endblock %}
