@@ -29,7 +29,10 @@ struct IndexTemplate {
     site_header: SiteHeader,
     site_nav: String,
     copyright_years: String,
+    signed_in: bool,
     is_admin: bool,
+    profile_url: String,
+    register_url: String,
 }
 
 #[derive(Template)]
@@ -191,12 +194,17 @@ struct AdminUserTemplate {
 /// # Errors
 ///
 /// Returns [`askama::Error`] when template rendering fails.
-pub fn render_index_html(is_admin: bool) -> Result<String, askama::Error> {
+pub fn render_index_html(signed_in: bool, is_admin: bool) -> Result<String, askama::Error> {
+    let base = crate::config::public_base_url();
+    let links = sigma_identity_nav::auth_links(&base, &base, "/");
     IndexTemplate {
         site_header: page_header("Sigma Identity"),
         site_nav: site_nav("/", true)?,
         copyright_years: copyright_years(),
+        signed_in,
         is_admin,
+        profile_url: links.profile_url,
+        register_url: links.register_url,
     }
     .render()
 }
@@ -434,16 +442,32 @@ mod tests {
 
     #[test]
     fn index_hides_admin_section_for_anonymous_visitor() {
-        let html = render_index_html(false).expect("index template");
+        let html = render_index_html(false, false).expect("index template");
         assert!(html.contains("sigma-dial-root"));
         assert!(!html.contains("href=\"/admin/users\""));
     }
 
     #[test]
     fn index_shows_users_link_for_admin() {
-        let html = render_index_html(true).expect("index template");
+        let html = render_index_html(true, true).expect("index template");
         assert!(html.contains("href=\"/admin/users\""));
         assert!(html.contains(">Users<"));
+    }
+
+    #[test]
+    fn index_shows_register_sign_in_when_signed_out() {
+        let html = render_index_html(false, false).expect("index template");
+        assert!(html.contains("/register?return_url="));
+        assert!(html.contains(">Register / Sign in<"));
+        assert!(!html.contains(">Update profile<"));
+    }
+
+    #[test]
+    fn index_shows_update_profile_when_signed_in() {
+        let html = render_index_html(true, false).expect("index template");
+        assert!(html.contains("/profile?return_url="));
+        assert!(html.contains(">Update profile<"));
+        assert!(!html.contains(">Register / Sign in<"));
     }
 
     #[test]

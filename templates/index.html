@@ -13,9 +13,28 @@
             <p class="site-directory-lead">Sign-in, registration, and account services for Sigma Tactical Group applications.</p>
           </header>
 
-          {% if is_admin %}
-          <nav class="site-directory" aria-label="Admin">
+          <nav class="site-directory" aria-label="Account">
             <ul class="site-directory-list">
+              {% if signed_in %}
+              <li>
+                <a class="site-directory-card" href="{{ profile_url }}">
+                  <span class="site-directory-name">Update profile</span>
+                  <span class="site-directory-meta">
+                    <span class="site-directory-desc">Edit your account details.</span>
+                  </span>
+                </a>
+              </li>
+              {% else %}
+              <li>
+                <a class="site-directory-card" href="{{ register_url }}">
+                  <span class="site-directory-name">Register / Sign in</span>
+                  <span class="site-directory-meta">
+                    <span class="site-directory-desc">Create an account or sign in to an existing one.</span>
+                  </span>
+                </a>
+              </li>
+              {% endif %}
+              {% if is_admin %}
               <li>
                 <a class="site-directory-card" href="/admin/users">
                   <span class="site-directory-name">Users</span>
@@ -24,9 +43,9 @@
                   </span>
                 </a>
               </li>
+              {% endif %}
             </ul>
           </nav>
-          {% endif %}
         </div>
       </div>
 {% endblock %}

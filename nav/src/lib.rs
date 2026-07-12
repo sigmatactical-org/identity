@@ -16,6 +16,8 @@ pub struct AuthLinks {
     pub sign_in_url: String,
     /// Identity profile page URL for the signed-in user.
     pub profile_url: String,
+    /// Identity registration page URL that returns the user to the calling app.
+    pub register_url: String,
     /// Identity service public base URL (trailing slash), used by the widget JS.
     pub identity_base_url: String,
 }
@@ -41,10 +43,15 @@ pub fn auth_links(identity_base: &str, app_base: &str, return_path: &str) -> Aut
         "{identity_root}/profile?return_url={}",
         percent_encode(&app_uri)
     );
+    let register_url = format!(
+        "{identity_root}/register?return_url={}",
+        percent_encode(&app_uri)
+    );
 
     AuthLinks {
         sign_in_url,
         profile_url,
+        register_url,
         identity_base_url: format!("{identity_root}/"),
     }
 }
@@ -134,6 +141,7 @@ mod tests {
                 .contains("redirect_uri=http%3A%2F%2Fidentity.example%2Fauth%2Fcallback")
         );
         assert!(links.profile_url.contains("/profile?return_url="));
+        assert!(links.register_url.contains("/register?return_url="));
         assert_eq!(links.identity_base_url, "http://identity.example/");
     }
 

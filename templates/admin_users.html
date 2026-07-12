@@ -7,71 +7,69 @@
 
 {% block content %}
 <div class="container">
-  <div class="register-card register-card--wide">
-    <h1>Users</h1>
-    <p class="lead">Registered accounts in this realm.</p>
+  <h1>Users</h1>
+  <p class="lead">Registered accounts in this realm.</p>
 
-    <form method="get" action="/admin/users" class="row g-2 mb-4">
-      <div class="col-md-8">
-        <input
-          class="form-control"
-          type="search"
-          name="q"
-          value="{{ search }}"
-          placeholder="Search username, email, or name…"
-        />
-      </div>
-      <div class="col-md-4 d-flex gap-2">
-        <button type="submit" class="btn btn-primary">Search</button>
-        {% if search != "" %}
-        <a class="btn btn-outline-secondary" href="/admin/users">Clear</a>
-        {% endif %}
-      </div>
-    </form>
-
-    <div class="table-responsive">
-      <table class="table table-sm align-middle">
-        <thead>
-          <tr>
-            <th>Username</th>
-            <th>Email</th>
-            <th>Name</th>
-            <th>Enabled</th>
-            <th>Verified</th>
-            <th>Created</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for user in users %}
-          <tr>
-            <td>{{ user.username }}</td>
-            <td>{{ user.email }}</td>
-            <td>{{ user.name }}</td>
-            <td>{% if user.enabled %}Yes{% else %}<span class="text-warning">No</span>{% endif %}</td>
-            <td>{% if user.email_verified %}Yes{% else %}<span class="text-warning">No</span>{% endif %}</td>
-            <td class="text-secondary small">{{ user.created }}</td>
-            <td><a class="btn btn-outline-primary btn-sm" href="/admin/users/{{ user.id }}">Details</a></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <form method="get" action="/admin/users" class="row g-2 mb-4">
+    <div class="col-md-8">
+      <input
+        class="form-control"
+        type="search"
+        name="q"
+        value="{{ search }}"
+        placeholder="Search username, email, or name…"
+      />
     </div>
+    <div class="col-md-4 d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Search</button>
+      {% if search != "" %}
+      <a class="btn btn-outline-secondary" href="/admin/users">Clear</a>
+      {% endif %}
+    </div>
+  </form>
 
-    {% if users.is_empty() %}
-    <p class="text-secondary mb-4">No users found.</p>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Name</th>
+          <th>Enabled</th>
+          <th>Verified</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>{{ user.username }}</td>
+          <td>{{ user.email }}</td>
+          <td>{{ user.name }}</td>
+          <td>{% if user.enabled %}Yes{% else %}<span class="text-warning">No</span>{% endif %}</td>
+          <td>{% if user.email_verified %}Yes{% else %}<span class="text-warning">No</span>{% endif %}</td>
+          <td class="text-secondary small">{{ user.created }}</td>
+          <td><a class="btn btn-outline-primary btn-sm" href="/admin/users/{{ user.id }}">Details</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if users.is_empty() %}
+  <p class="text-secondary mb-4">No users found.</p>
+  {% endif %}
+
+  <div class="d-flex justify-content-between">
+    {% if has_prev %}
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/users?page={{ prev_page }}{% if search != "" %}&amp;q={{ search }}{% endif %}">Previous</a>
+    {% else %}
+    <span></span>
     {% endif %}
-
-    <div class="d-flex justify-content-between">
-      {% if has_prev %}
-      <a class="btn btn-outline-secondary btn-sm" href="/admin/users?page={{ prev_page }}{% if search != "" %}&amp;q={{ search }}{% endif %}">Previous</a>
-      {% else %}
-      <span></span>
-      {% endif %}
-      {% if has_next %}
-      <a class="btn btn-outline-secondary btn-sm" href="/admin/users?page={{ next_page }}{% if search != "" %}&amp;q={{ search }}{% endif %}">Next</a>
-      {% endif %}
-    </div>
+    {% if has_next %}
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/users?page={{ next_page }}{% if search != "" %}&amp;q={{ search }}{% endif %}">Next</a>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

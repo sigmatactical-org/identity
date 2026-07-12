@@ -209,7 +209,13 @@ fn mount_themed_app_assets(mut app: Router, files_root: &Path) -> Router {
 }
 
 async fn home_page(session: Session) -> impl IntoResponse {
-    match templates::render_index_html(is_admin(&session).await) {
+    let signed_in = session
+        .get::<SessionTokens>(SESSION_KEY_JWT)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+    match templates::render_index_html(signed_in, is_admin(&session).await) {
         Ok(html) => Html(html).into_response(),
         Err(error) => {
             error!("Failed to render home page: {error}");
