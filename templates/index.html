@@ -26,10 +26,18 @@
               </li>
               {% else %}
               <li>
-                <a class="site-directory-card" href="{{ register_url }}">
-                  <span class="site-directory-name">Register / Sign in</span>
+                <a class="site-directory-card" href="{{ sign_in_url }}">
+                  <span class="site-directory-name">Sign in</span>
                   <span class="site-directory-meta">
-                    <span class="site-directory-desc">Create an account or sign in to an existing one.</span>
+                    <span class="site-directory-desc">Sign in to an existing account.</span>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a class="site-directory-card" href="{{ register_url }}">
+                  <span class="site-directory-name">Register</span>
+                  <span class="site-directory-meta">
+                    <span class="site-directory-desc">Create a new account.</span>
                   </span>
                 </a>
               </li>

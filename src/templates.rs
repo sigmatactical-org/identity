@@ -33,6 +33,7 @@ struct IndexTemplate {
     is_admin: bool,
     profile_url: String,
     register_url: String,
+    sign_in_url: String,
 }
 
 #[derive(Template)]
@@ -205,6 +206,7 @@ pub fn render_index_html(signed_in: bool, is_admin: bool) -> Result<String, aska
         is_admin,
         profile_url: links.profile_url,
         register_url: links.register_url,
+        sign_in_url: links.sign_in_url,
     }
     .render()
 }
@@ -455,11 +457,19 @@ mod tests {
     }
 
     #[test]
-    fn index_shows_register_sign_in_when_signed_out() {
+    fn index_shows_sign_in_and_register_when_signed_out() {
         let html = render_index_html(false, false).expect("index template");
+        assert!(html.contains("/auth/login?"));
         assert!(html.contains("/register?return_url="));
-        assert!(html.contains(">Register / Sign in<"));
+        assert!(html.contains(">Sign in<"));
+        assert!(html.contains(">Register<"));
         assert!(!html.contains(">Update profile<"));
+        let sign_in_pos = html.find(">Sign in<").expect("sign in link");
+        let register_pos = html.find(">Register<").expect("register link");
+        assert!(
+            sign_in_pos < register_pos,
+            "Sign in should appear above Register"
+        );
     }
 
     #[test]

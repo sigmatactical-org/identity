@@ -502,6 +502,15 @@ fn security_headers(router: Router) -> Router {
         .layer(SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("permissions-policy"),
             HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+        ))
+        // Pages render session-dependent content (nav welcome state, signed-in
+        // vs anonymous body content, admin data). Without this, the browser
+        // can restore a stale render from bfcache/disk cache on back/forward
+        // navigation after sign-in or sign-out. Static assets already set
+        // their own Cache-Control, so if_not_present leaves those untouched.
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
         ));
 
     if config::is_production() {
