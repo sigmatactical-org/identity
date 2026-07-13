@@ -22,7 +22,7 @@ use openidconnect::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 use url::Url;
 
 use crate::config;
@@ -53,6 +53,30 @@ type OidcCoreClient = CoreClient<
 struct OidcInner {
     client: OidcCoreClient,
     metadata: CoreProviderMetadata,
+}
+
+/// Result of an RFC 7662 token introspection against the identity provider.
+/// `active` reflects the IdP's authoritative validity decision (signature,
+/// expiry, revocation); `realm_roles` are the Keycloak realm roles the IdP
+/// reports for an active token (empty when inactive).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct IntrospectionResult {
+    pub(crate) active: bool,
+    pub(crate) realm_roles: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IntrospectionResponse {
+    #[serde(default)]
+    active: bool,
+    #[serde(default)]
+    realm_access: Option<RealmAccessClaim>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RealmAccessClaim {
+    #[serde(default)]
+    roles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,6 +222,75 @@ impl OIDCClient {
         self.invalidate().await;
         let inner = self.ensure_inner().await?;
         Ok(inner.metadata.issuer().url().as_str().to_string())
+    }
+
+    /// Authoritatively validate a bearer access token via RFC 7662 token
+    /// introspection at the identity provider.
+    ///
+    /// This is the trust anchor for the machine (client-credentials) proxy
+    /// path: identity does **not** trust claims decoded from an unverified
+    /// bearer token — a forged `alg:none` or wrong-key JWT would otherwise
+    /// pass a naive local claims read. Introspection delegates signature,
+    /// expiry, and revocation checks to Keycloak, which holds the signing
+    /// keys, and returns the realm roles only for a genuinely active token.
+    ///
+    /// Callers must fail closed on `Err` (treat as unauthenticated); an
+    /// `Ok(result)` with `active == false` is an authoritative rejection.
+    pub(crate) async fn introspect_access_token(&self, token: &str) -> Result<IntrospectionResult> {
+        let inner = self.ensure_inner().await?;
+        let token_endpoint = inner
+            .metadata
+            .token_endpoint()
+            .ok_or_else(|| anyhow!("Provider metadata is missing a token endpoint"))?
+            .as_str()
+            .trim_end_matches('/')
+            .to_string();
+        // Keycloak exposes introspection at `{token_endpoint}/introspect`.
+        let introspection_url = format!("{token_endpoint}/introspect");
+
+        let response = self
+            .http_client
+            .post(&introspection_url)
+            .form(&[
+                ("token", token),
+                ("token_type_hint", "access_token"),
+                ("client_id", self.client_id.as_str()),
+                ("client_secret", self.client_secret.as_str()),
+            ])
+            .send()
+            .await
+            .context("Token introspection request failed")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            // A 4xx is the IdP authoritatively rejecting the token (Keycloak
+            // returns 400 for a token it cannot even parse, e.g. a forged
+            // `alg:none` JWT). That is a definitive "inactive", not a server
+            // fault — deny cleanly rather than surfacing a 5xx. A 5xx or
+            // network error means the IdP is unavailable: propagate as `Err`
+            // so the caller fails closed with a distinct server error.
+            if status.is_client_error() {
+                warn!("Token introspection rejected the token with HTTP {status}: {body}");
+                return Ok(IntrospectionResult::default());
+            }
+            return Err(anyhow!(
+                "Token introspection returned HTTP {status}: {body}"
+            ));
+        }
+
+        let parsed: IntrospectionResponse = response
+            .json()
+            .await
+            .context("Failed to parse token introspection response")?;
+
+        Ok(IntrospectionResult {
+            active: parsed.active,
+            realm_roles: parsed
+                .realm_access
+                .map(|access| access.roles)
+                .unwrap_or_default(),
+        })
     }
 
     async fn invalidate(&self) {
@@ -1004,4 +1097,74 @@ fn resolve_auth_type(metadata: &CoreProviderMetadata) -> AuthType {
     }
 
     AuthType::BasicAuth
+}
+
+#[cfg(test)]
+mod introspection_tests {
+    use crate::auth::tests::MockSetup;
+
+    // A syntactically well-formed but unsigned/forged bearer. Its contents must
+    // never influence the outcome: the decision comes entirely from the IdP's
+    // introspection response, which the mock controls independently.
+    const FORGED_BEARER: &str =
+        "eyJhbGciOiJub25lIn0.eyJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsic2lnbWEtYWRtaW4iXX19.";
+
+    #[tokio::test]
+    async fn introspection_reports_active_token_roles() {
+        let m = MockSetup::new().await;
+        m.setup_introspection(true, &["sigma-admin", "offline_access"])
+            .await;
+        let result = m
+            .oidc_client()
+            .introspect_access_token(FORGED_BEARER)
+            .await
+            .expect("introspection call should succeed");
+        assert!(result.active);
+        assert!(result.realm_roles.iter().any(|r| r == "sigma-admin"));
+    }
+
+    #[tokio::test]
+    async fn introspection_4xx_is_a_clean_rejection_not_an_error() {
+        // Keycloak returns HTTP 400 for a token it cannot parse (e.g. a forged
+        // alg:none JWT). That must be a definitive deny (active=false), not a
+        // propagated error that would surface as a 5xx to the caller.
+        let m = MockSetup::new().await;
+        m.setup_introspection_status(400, "{\"error\":\"invalid_request\"}")
+            .await;
+        let result = m
+            .oidc_client()
+            .introspect_access_token(FORGED_BEARER)
+            .await
+            .expect("4xx from introspection must be a clean deny, not an error");
+        assert!(!result.active);
+        assert!(result.realm_roles.is_empty());
+    }
+
+    #[tokio::test]
+    async fn introspection_5xx_fails_closed_with_error() {
+        // A 5xx means the IdP is unavailable — the caller must fail closed with
+        // a distinct server error, never silently allow.
+        let m = MockSetup::new().await;
+        m.setup_introspection_status(503, "unavailable").await;
+        let result = m.oidc_client().introspect_access_token(FORGED_BEARER).await;
+        assert!(result.is_err(), "5xx must propagate as an error");
+    }
+
+    #[tokio::test]
+    async fn introspection_rejects_inactive_token_despite_forged_claims() {
+        let m = MockSetup::new().await;
+        // The IdP says the (forged/expired/revoked) token is inactive, even
+        // though its embedded claims assert `sigma-admin`.
+        m.setup_introspection(false, &[]).await;
+        let result = m
+            .oidc_client()
+            .introspect_access_token(FORGED_BEARER)
+            .await
+            .expect("introspection call should succeed");
+        assert!(!result.active, "forged token must be reported inactive");
+        assert!(
+            result.realm_roles.is_empty(),
+            "no roles may be derived from an inactive token"
+        );
+    }
 }

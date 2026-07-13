@@ -775,6 +775,40 @@ mod tests {
             )
         }
 
+        /// Mount a mock RFC 7662 introspection endpoint returning the given
+        /// `active` state and realm roles for any presented token.
+        pub async fn setup_introspection(&self, active: bool, realm_roles: &[&str]) {
+            let roles_json = realm_roles
+                .iter()
+                .map(|role| format!("\"{role}\""))
+                .collect::<Vec<_>>()
+                .join(",");
+            let body =
+                format!("{{\"active\":{active},\"realm_access\":{{\"roles\":[{roles_json}]}}}}");
+            Mock::given(method("POST"))
+                .and(path("/testing-issuer/token/introspect"))
+                .respond_with(ResponseTemplate::new(200).set_body_raw(body, "application/json"))
+                .mount(&self.mock_server)
+                .await;
+        }
+
+        /// Mount a mock introspection endpoint returning an arbitrary HTTP
+        /// status and raw body, for exercising the error/rejection paths.
+        pub async fn setup_introspection_status(&self, status: u16, body: &str) {
+            Mock::given(method("POST"))
+                .and(path("/testing-issuer/token/introspect"))
+                .respond_with(
+                    ResponseTemplate::new(status)
+                        .set_body_raw(body.to_string(), "application/json"),
+                )
+                .mount(&self.mock_server)
+                .await;
+        }
+
+        pub fn oidc_client(&self) -> &OIDCClient {
+            &self.oidc_client
+        }
+
         pub async fn setup_id_token_nonce(&self, header: &HeaderValue) {
             let nonce: String = header
                 .to_str()

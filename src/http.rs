@@ -32,7 +32,7 @@ use tracing::{debug, error, warn};
 use crate::{
     auth::{
         AdminDeps, AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens,
-        auth_routes, is_admin, register_routes, token_has_any_realm_role,
+        auth_routes, is_admin, register_routes,
     },
     config,
     monitoring::health_routes,
@@ -245,6 +245,7 @@ async fn conformance_page() -> impl IntoResponse {
 }
 
 fn api_proxy<S: SessionStore + Clone + 'static>(
+    oidc_client: OIDCClient,
     session_layer: &SessionManagerLayer<S, PrivateCookie>,
     proxy_config: &ProxyConfig,
     cors_origins: Vec<HeaderValue>,
@@ -293,6 +294,7 @@ fn api_proxy<S: SessionStore + Clone + 'static>(
                 .layer(session_layer.clone())
                 .layer(Extension(proxy_config.clone()))
                 .layer(Extension(proxy_client))
+                .layer(Extension(oidc_client))
                 .layer(api_cors),
         ))
 }
@@ -318,6 +320,7 @@ async fn proxy_options() -> Response {
 async fn proxy(
     Extension(proxy_config): Extension<ProxyConfig>,
     Extension(client): Extension<ProxyClient>,
+    Extension(oidc_client): Extension<OIDCClient>,
     session: Session,
     jar: CookieJar,
     mut req: axum::extract::Request,
@@ -327,13 +330,40 @@ async fn proxy(
     let path = req.uri().path();
 
     let access_token = if let Some(ref tokens) = session_jwt {
-        // Browser / session path: CSRF required.
+        // Browser / session path: CSRF required. The session tokens were
+        // obtained through the verified OIDC login flow and stored server-side
+        // in the encrypted session, so their claims are trusted by provenance.
         verify_csrf(&session, req.headers().get(HEADER_KEY_CSRF_TOKEN)).await?;
         ensure_proxy_admin_access(path, |roles| tokens.has_any_realm_role(roles))?;
         tokens.access_token().to_string()
     } else if let Some(token) = bearer {
-        // Machine path (OIDC client-credentials): no CSRF; roles from JWT.
-        ensure_proxy_admin_access(path, |roles| token_has_any_realm_role(&token, roles))?;
+        // Machine path (OIDC client-credentials): no CSRF. The bearer is
+        // attacker-controlled, so its claims must NOT be trusted as decoded —
+        // a forged `alg:none` or wrong-key JWT would otherwise pass. Delegate
+        // the validity decision to the IdP via introspection (fail closed on
+        // error), and derive roles only from the introspection result.
+        let introspection = oidc_client
+            .introspect_access_token(&token)
+            .await
+            .map_err(|error| {
+                error!("Bearer token introspection failed: {error:?}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Authentication check failed",
+                )
+                    .into_response()
+            })?;
+        if !introspection.active {
+            return Err((StatusCode::UNAUTHORIZED, "Invalid or expired token").into_response());
+        }
+        ensure_proxy_admin_access(path, |roles| {
+            roles.iter().any(|required| {
+                introspection
+                    .realm_roles
+                    .iter()
+                    .any(|have| have == required)
+            })
+        })?;
         token
     } else {
         return Err((StatusCode::UNAUTHORIZED, "Authentication required").into_response());
@@ -555,7 +585,12 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         .merge(health_routes(pool.clone()))
         .nest(
             "/api",
-            api_proxy(session_layer, proxy_config, cors_origins)?,
+            api_proxy(
+                oidc_client.clone(),
+                session_layer,
+                proxy_config,
+                cors_origins,
+            )?,
         )
         .nest("/app", health_routes(pool.clone()))
         .nest(
