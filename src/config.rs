@@ -163,23 +163,26 @@ pub fn registration_enabled() -> bool {
         )
 }
 
-/// Dev registration finalization policy (ignored in production).
+/// Registration finalization policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistrationMode {
-    /// Enable the account immediately after create (default dev behavior).
+    /// Enable the account immediately after create (dev convenience only).
     AutoApprove,
     /// Send Keycloak VERIFY_EMAIL and wait for `/register/verified`.
     VerifyEmail,
 }
 
-/// Dev/staging registration mode. Production always uses the prod adapter.
+/// Registration mode, selected solely by `REGISTRATION_MODE` so it is
+/// independent of the production hardening flag (`is_production`, which drives
+/// security headers). An explicit value is honored in every environment; the
+/// default is the safe `VerifyEmail` in production and `AutoApprove` only in
+/// non-production, so local dev keeps its fast path without an email server
+/// while a prod deploy never silently auto-enables accounts.
 pub fn registration_mode() -> RegistrationMode {
-    if is_production() {
-        return RegistrationMode::VerifyEmail;
-    }
     match var_optional("REGISTRATION_MODE").as_deref().map(str::trim) {
         Some("verify_email" | "email" | "verification") => RegistrationMode::VerifyEmail,
         Some("auto_approve" | "approve" | "auto") => RegistrationMode::AutoApprove,
+        _ if is_production() => RegistrationMode::VerifyEmail,
         _ => RegistrationMode::AutoApprove,
     }
 }

@@ -58,49 +58,31 @@ impl AccountRegistrationAdapter for EmailVerificationAccountRegistrationAdapter 
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct ProdAccountRegistrationAdapter;
-
-impl AccountRegistrationAdapter for ProdAccountRegistrationAdapter {
-    async fn finalize_registration(
-        &self,
-        _admin: &KeycloakAdmin,
-        _user: &CreatedUser,
-        _context: &RegistrationContext,
-    ) -> Result<RegistrationOutcome> {
-        anyhow::bail!("production account registration is not implemented")
-    }
-}
-
-/// Selects the registration adapter for the current environment.
+/// Selects the registration adapter from the registration mode. This is
+/// deliberately independent of `is_production` (which only drives security
+/// headers): a production deploy runs the email-verification flow via
+/// `REGISTRATION_MODE=verify_email`, and hardened headers do not silently
+/// disable or change registration.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RegistrationAdapter {
     Dev(DevAccountRegistrationAdapter),
     VerifyEmail(EmailVerificationAccountRegistrationAdapter),
-    Prod(ProdAccountRegistrationAdapter),
 }
 
 impl RegistrationAdapter {
     #[must_use]
     pub fn from_env() -> Self {
-        Self::for_mode(
-            crate::config::is_production(),
-            crate::config::registration_mode(),
-        )
+        Self::for_mode(crate::config::registration_mode())
     }
 
     #[must_use]
-    fn for_mode(is_production: bool, mode: crate::config::RegistrationMode) -> Self {
-        if is_production {
-            Self::Prod(ProdAccountRegistrationAdapter)
-        } else {
-            match mode {
-                crate::config::RegistrationMode::AutoApprove => {
-                    Self::Dev(DevAccountRegistrationAdapter)
-                }
-                crate::config::RegistrationMode::VerifyEmail => {
-                    Self::VerifyEmail(EmailVerificationAccountRegistrationAdapter)
-                }
+    fn for_mode(mode: crate::config::RegistrationMode) -> Self {
+        match mode {
+            crate::config::RegistrationMode::AutoApprove => {
+                Self::Dev(DevAccountRegistrationAdapter)
+            }
+            crate::config::RegistrationMode::VerifyEmail => {
+                Self::VerifyEmail(EmailVerificationAccountRegistrationAdapter)
             }
         }
     }
@@ -114,7 +96,6 @@ impl RegistrationAdapter {
         match self {
             Self::Dev(adapter) => adapter.finalize_registration(admin, user, context).await,
             Self::VerifyEmail(adapter) => adapter.finalize_registration(admin, user, context).await,
-            Self::Prod(adapter) => adapter.finalize_registration(admin, user, context).await,
         }
     }
 }
@@ -126,7 +107,7 @@ mod tests {
     #[test]
     fn registration_adapter_selects_dev_auto_approve() {
         assert!(matches!(
-            RegistrationAdapter::for_mode(false, crate::config::RegistrationMode::AutoApprove),
+            RegistrationAdapter::for_mode(crate::config::RegistrationMode::AutoApprove),
             RegistrationAdapter::Dev(_)
         ));
     }
@@ -134,16 +115,8 @@ mod tests {
     #[test]
     fn registration_adapter_selects_verify_email_mode() {
         assert!(matches!(
-            RegistrationAdapter::for_mode(false, crate::config::RegistrationMode::VerifyEmail),
+            RegistrationAdapter::for_mode(crate::config::RegistrationMode::VerifyEmail),
             RegistrationAdapter::VerifyEmail(_)
-        ));
-    }
-
-    #[test]
-    fn registration_adapter_selects_prod_in_production() {
-        assert!(matches!(
-            RegistrationAdapter::for_mode(true, crate::config::RegistrationMode::AutoApprove),
-            RegistrationAdapter::Prod(_)
         ));
     }
 }
