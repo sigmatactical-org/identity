@@ -14,8 +14,10 @@ test.describe("proxy API", () => {
       headers: { "X-CSRF-TOKEN": "not-a-real-token" },
     });
 
-    expect(response.status()).toBe(403);
-    expect(await response.text()).toContain("Missing or invalid CSRF token");
+    // Authentication is checked before CSRF: anonymous callers get 401
+    // (introspection hardening), not the CSRF 403.
+    expect(response.status()).toBe(401);
+    expect(await response.text()).toContain("Authentication required");
   });
 });
 

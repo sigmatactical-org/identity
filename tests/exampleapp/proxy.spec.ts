@@ -11,8 +11,10 @@ test.describe("example app proxy", () => {
 
     await expect(page.locator("#csrftoken")).toBeEmpty();
     await page.getByRole("button", { name: "Echo request" }).click();
+    // Unauthenticated requests are rejected by the auth layer before the
+    // CSRF check runs (machine-path introspection hardening).
     await expect(page.locator("#echoresponse")).toContainText(
-      "Missing or invalid CSRF token",
+      "Authentication required",
     );
 
     await loginViaExampleApp(page);
