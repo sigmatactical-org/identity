@@ -42,9 +42,12 @@ use crate::{
 
 const THEMED_INDEX_APPS: &[&str] = &["exampleapp", "conformance"];
 
+/// Header carrying the CSRF token.
 pub(crate) static HEADER_KEY_CSRF_TOKEN: &str = "x-csrf-token";
+/// Header carrying the service-internal auth token.
 pub(crate) static HEADER_KEY_INTERNAL_TOKEN: &str = "x-sigma-internal-token";
 
+/// Hyper client used to proxy IdP requests.
 pub(crate) type ProxyClient = hyper_util::client::legacy::Client<
     HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
     Body,
@@ -78,6 +81,7 @@ impl ProxyConfig {
             .unwrap_or(format!("{}{}", self.base_url, uri))
     }
 
+    /// Initialize tracing/metrics once per process.
     pub(crate) fn try_init(
         base_url: String,
         cookie_name: &str,
@@ -553,6 +557,7 @@ fn security_headers(router: Router) -> Router {
     router
 }
 
+/// Toggles for optional route groups when building the app.
 pub(crate) struct AppBuildOptions {
     pub remaining_secs_threshold: u64,
     pub app_config: AppConfigurationState,
@@ -561,6 +566,7 @@ pub(crate) struct AppBuildOptions {
     pub admin: Option<AdminDeps>,
 }
 
+/// Assemble the full axum app from settings + stores.
 pub(crate) fn app<S: SessionStore + Clone + 'static>(
     oidc_client: OIDCClient,
     session_layer: &SessionManagerLayer<S, PrivateCookie>,

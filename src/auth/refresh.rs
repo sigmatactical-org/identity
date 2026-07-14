@@ -25,6 +25,7 @@ pub(crate) struct RefreshLockManager {
 }
 
 impl RefreshLockManager {
+    /// Refresh policy: renew when less than the threshold remains.
     pub(crate) fn new(remaining_secs_threshold: u64) -> Self {
         Self {
             refreshing: Arc::new(Mutex::new(HashSet::new())),

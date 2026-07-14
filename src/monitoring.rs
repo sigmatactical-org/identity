@@ -22,6 +22,7 @@ async fn health_check(Extension(pool): Extension<PgPool>) -> Response {
         .into_response()
 }
 
+/// Liveness/readiness endpoints backed by the DB pool.
 pub(crate) fn health_routes(pool: PgPool) -> Router {
     Router::new()
         .route("/up", get(|| async { "up" }))

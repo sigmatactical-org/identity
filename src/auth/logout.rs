@@ -1,3 +1,12 @@
+mod logout_app_settings;
+mod logout_behavior;
+mod logout_callback_query_params;
+mod logout_query_params;
+pub use logout_app_settings::LogoutAppSettings;
+pub use logout_behavior::LogoutBehavior;
+pub(crate) use logout_callback_query_params::LogoutCallbackQueryParams;
+pub(crate) use logout_query_params::LogoutQueryParams;
+
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -8,57 +17,16 @@ use axum_extra::extract::{
     cookie::{Cookie, SameSite as CookieSameSite},
 };
 use axum_macros::debug_handler;
-use serde::Deserialize;
 use time::Duration;
 use tower_sessions::Session;
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 use url::Url;
 
 use crate::session::{
     LOGOUT_APP_URI_COOKIE, SESSION_KEY_JWT, SESSION_KEY_LOGOUT_APP_URI, SameSiteSetting,
 };
 
-use super::{SessionTokens, allowlist::UriAllowlist};
-
-#[derive(Clone, Debug)]
-pub enum LogoutBehavior {
-    FrontChannelLogoutWithIdToken,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub(crate) struct LogoutQueryParams {
-    #[serde(rename = "app_uri")]
-    app_uri: String,
-    #[serde(rename = "redirect_uri")]
-    redirect_uri: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub(crate) struct LogoutCallbackQueryParams {
-    #[serde(rename = "app_uri")]
-    app_uri: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct LogoutAppSettings {
-    pub(crate) client_id: String,
-    pub(crate) logout_uri: String,
-    pub(crate) _behavior: LogoutBehavior,
-    pub(crate) allowed_app_uris: UriAllowlist,
-    pub(crate) allowed_oidc_redirect_uris: UriAllowlist,
-}
-
-impl LogoutAppSettings {
-    pub(crate) fn is_app_uri_allowed(&self, app_uri: &str) -> bool {
-        trace!("logout app_uri check: {app_uri}");
-        self.allowed_app_uris.is_allowed(app_uri)
-    }
-
-    pub(crate) fn is_oidc_redirect_allowed(&self, redirect_uri: &str) -> bool {
-        trace!("logout oidc redirect check: {redirect_uri}");
-        self.allowed_oidc_redirect_uris.is_allowed(redirect_uri)
-    }
-}
+use super::SessionTokens;
 
 fn session_cookie_secure() -> bool {
     !crate::config::var_optional("SESSION_SECURE_COOKIE_DISABLED")

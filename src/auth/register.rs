@@ -1,3 +1,18 @@
+mod register_form;
+mod register_page;
+mod register_query_params;
+mod register_success_query;
+mod register_verified_query;
+mod registration_app_settings;
+mod registration_deps;
+pub(crate) use register_form::RegisterForm;
+pub(crate) use register_page::RegisterPage;
+pub(crate) use register_query_params::RegisterQueryParams;
+pub(crate) use register_success_query::RegisterSuccessQuery;
+pub(crate) use register_verified_query::RegisterVerifiedQuery;
+pub use registration_app_settings::RegistrationAppSettings;
+pub use registration_deps::RegistrationDeps;
+
 use axum::{
     Extension, Form,
     extract::{Path, Query, State},
@@ -5,7 +20,6 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
 };
 use axum_macros::debug_handler;
-use serde::Deserialize;
 use tracing::{debug, error};
 use url::Url;
 
@@ -14,73 +28,9 @@ use crate::human_check;
 use crate::templates;
 
 use super::{
-    allowlist::UriAllowlist,
     keycloak_admin::KeycloakAdmin,
     registration_adapter::{RegistrationAdapter, RegistrationContext, RegistrationOutcome},
 };
-
-#[derive(Clone)]
-pub struct RegistrationDeps {
-    pub settings: RegistrationAppSettings,
-    pub admin: KeycloakAdmin,
-    pub adapter: RegistrationAdapter,
-}
-
-#[derive(Clone, Debug)]
-pub struct RegistrationAppSettings {
-    return_uris: UriAllowlist,
-}
-
-impl RegistrationAppSettings {
-    pub fn new(return_uri_entries: Vec<String>) -> Self {
-        Self {
-            return_uris: UriAllowlist::new(return_uri_entries),
-        }
-    }
-
-    pub(crate) fn is_return_url_allowed(&self, return_url: &str) -> bool {
-        self.return_uris.is_allowed(return_url)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct RegisterSuccessQuery {
-    return_url: String,
-    #[serde(default)]
-    approved: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct RegisterVerifiedQuery {
-    #[serde(default)]
-    return_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct RegisterQueryParams {
-    return_url: String,
-    #[serde(default)]
-    email: Option<String>,
-    #[serde(default, alias = "given_name")]
-    first_name: Option<String>,
-    #[serde(default, alias = "family_name")]
-    last_name: Option<String>,
-    #[serde(default)]
-    username: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct RegisterForm {
-    return_url: String,
-    email: String,
-    username: String,
-    first_name: String,
-    last_name: String,
-    password: String,
-    password_confirm: String,
-    #[serde(default)]
-    altcha: String,
-}
 
 #[debug_handler]
 pub(crate) async fn register_form(
@@ -267,16 +217,6 @@ pub(crate) async fn register_submit(
     }
 }
 
-struct RegisterPage {
-    return_url: String,
-    email: String,
-    username: String,
-    first_name: String,
-    last_name: String,
-    error: Option<String>,
-    human_check: sigma_human_check::HumanCheck,
-}
-
 fn render_register_success_page(
     return_url: &str,
     auto_approved: bool,
@@ -334,6 +274,7 @@ fn validate_form(form: &RegisterForm) -> Option<String> {
     None
 }
 
+/// Where the email-verification link lands for `user_id`.
 pub(crate) fn verification_redirect_uri(user_id: &str) -> String {
     format!(
         "{}/register/verified/{}",

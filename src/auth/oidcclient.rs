@@ -1,3 +1,16 @@
+mod authorize_request_data;
+mod exp_field_in_jwt;
+mod introspection_response;
+mod introspection_result;
+mod oidc_inner;
+mod realm_access_claim;
+pub use authorize_request_data::AuthorizeRequestData;
+pub(crate) use exp_field_in_jwt::ExpFieldInJWT;
+pub(crate) use introspection_response::IntrospectionResponse;
+pub(crate) use introspection_result::IntrospectionResult;
+pub(crate) use oidc_inner::OidcInner;
+pub(crate) use realm_access_claim::RealmAccessClaim;
+
 use std::{
     borrow::Cow,
     sync::Arc,
@@ -19,7 +32,6 @@ use openidconnect::{
         CoreJwsSigningAlgorithm, CoreProviderMetadata,
     },
 };
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::RwLock;
 use tracing::{debug, trace, warn};
@@ -48,52 +60,6 @@ type OidcCoreClient = CoreClient<
     EndpointMaybeSet,
     EndpointMaybeSet,
 >;
-
-#[derive(Clone)]
-struct OidcInner {
-    client: OidcCoreClient,
-    metadata: CoreProviderMetadata,
-}
-
-/// Result of an RFC 7662 token introspection against the identity provider.
-/// `active` reflects the IdP's authoritative validity decision (signature,
-/// expiry, revocation); `realm_roles` are the Keycloak realm roles the IdP
-/// reports for an active token (empty when inactive).
-#[derive(Debug, Clone, Default)]
-pub(crate) struct IntrospectionResult {
-    pub(crate) active: bool,
-    pub(crate) realm_roles: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct IntrospectionResponse {
-    #[serde(default)]
-    active: bool,
-    #[serde(default)]
-    realm_access: Option<RealmAccessClaim>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RealmAccessClaim {
-    #[serde(default)]
-    roles: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ExpFieldInJWT {
-    pub(crate) exp: u64,
-}
-
-pub struct AuthorizeRequestData {
-    pub redirect_uri: String,
-    pub scope: String,
-    pub state: String,
-    pub ui_locales: Option<String>,
-    pub prompt: Option<String>,
-    pub kc_idp_hint: Option<String>,
-    /// Passed to Keycloak as `sigma_return_url` for the login-page register link.
-    pub register_return_url: Option<String>,
-}
 
 #[derive(Clone)]
 pub struct OIDCClient {

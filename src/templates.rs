@@ -1,3 +1,34 @@
+mod admin_service_account_row;
+mod admin_user_row;
+mod admin_user_template;
+mod admin_users_template;
+mod conformance_template;
+mod country_option;
+mod example_app_template;
+mod index_template;
+mod profile_edit_template;
+mod profile_fields;
+mod profile_view_row;
+mod profile_view_template;
+mod register_success_template;
+mod register_template;
+mod register_verified_template;
+pub(crate) use admin_service_account_row::AdminServiceAccountRow;
+pub(crate) use admin_user_row::AdminUserRow;
+pub(crate) use admin_user_template::AdminUserTemplate;
+pub(crate) use admin_users_template::AdminUsersTemplate;
+pub(crate) use conformance_template::ConformanceTemplate;
+pub(crate) use country_option::CountryOption;
+pub(crate) use example_app_template::ExampleAppTemplate;
+pub(crate) use index_template::IndexTemplate;
+pub(crate) use profile_edit_template::ProfileEditTemplate;
+pub use profile_fields::ProfileFields;
+pub(crate) use profile_view_row::ProfileViewRow;
+pub(crate) use profile_view_template::ProfileViewTemplate;
+pub(crate) use register_success_template::RegisterSuccessTemplate;
+pub(crate) use register_template::RegisterTemplate;
+pub(crate) use register_verified_template::RegisterVerifiedTemplate;
+
 use askama::Template;
 use sigma_theme::copyright_years;
 use sigma_theme::nav::{Breadcrumb, SiteHeader};
@@ -21,192 +52,6 @@ fn admin_section_header(section: &str) -> SiteHeader {
 
 fn site_nav(return_path: &str, show_contact_us: bool) -> Result<String, askama::Error> {
     crate::site_nav::render(return_path, show_contact_us, 0)
-}
-
-#[derive(Template)]
-#[template(path = "index.html")]
-struct IndexTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    signed_in: bool,
-    is_admin: bool,
-    profile_url: String,
-    register_url: String,
-    sign_in_url: String,
-    addresses_url: String,
-    payments_url: String,
-    orders_url: String,
-}
-
-#[derive(Template)]
-#[template(path = "exampleapp.html")]
-struct ExampleAppTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-}
-
-#[derive(Template)]
-#[template(path = "conformance.html")]
-struct ConformanceTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-}
-
-#[derive(Template)]
-#[template(path = "register_success.html")]
-struct RegisterSuccessTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    return_url: String,
-    auto_approved: bool,
-}
-
-#[derive(Template)]
-#[template(path = "register_verified.html")]
-struct RegisterVerifiedTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    return_url: String,
-    activated: bool,
-}
-
-#[derive(Template)]
-#[template(path = "register.html")]
-struct RegisterTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    return_url: String,
-    email: String,
-    username: String,
-    first_name: String,
-    last_name: String,
-    error: String,
-    human_check_enabled: bool,
-    human_check_challenge_url: String,
-}
-
-/// All profile field values shared by the read-only view and the edit form.
-/// Empty strings represent unfilled fields.
-#[derive(Debug, Default, Clone)]
-pub struct ProfileFields {
-    pub username: String,
-    pub email: String,
-    pub first_name: String,
-    pub last_name: String,
-    pub phone: String,
-    pub street: String,
-    pub city: String,
-    pub region: String,
-    pub postal_code: String,
-    pub country: String,
-    pub birthdate: String,
-    pub company: String,
-}
-
-/// A single label/value pair for read-only profile and admin detail views.
-pub(crate) struct ProfileViewRow {
-    pub label: String,
-    pub value: String,
-}
-
-/// A country `<option>` for the edit form's country dropdown.
-struct CountryOption {
-    name: String,
-    selected: bool,
-}
-
-#[derive(Template)]
-#[template(path = "profile.html")]
-struct ProfileViewTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    return_url: String,
-    edit_url: String,
-    logout_url: String,
-    addresses_url: String,
-    payments_url: String,
-    orders_url: String,
-    saved: bool,
-    rows: Vec<ProfileViewRow>,
-}
-
-#[derive(Template)]
-#[template(path = "profile_edit.html")]
-struct ProfileEditTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    return_url: String,
-    cancel_url: String,
-    error: String,
-    username: String,
-    email: String,
-    first_name: String,
-    last_name: String,
-    phone: String,
-    street: String,
-    city: String,
-    postal_code: String,
-    birthdate: String,
-    company: String,
-    countries: Vec<CountryOption>,
-    region: String,
-}
-
-pub(crate) struct AdminUserRow {
-    pub id: String,
-    pub username: String,
-    pub email: String,
-    pub name: String,
-    pub enabled: bool,
-    pub email_verified: bool,
-    pub created: String,
-}
-
-/// A client's service-account user, for the admin "Service accounts" table.
-pub(crate) struct AdminServiceAccountRow {
-    pub id: String,
-    pub client_id: String,
-    pub username: String,
-    pub enabled: bool,
-    pub created: String,
-}
-
-#[derive(Template)]
-#[template(path = "admin_users.html")]
-struct AdminUsersTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    search: String,
-    has_prev: bool,
-    has_next: bool,
-    prev_page: u32,
-    next_page: u32,
-    users: Vec<AdminUserRow>,
-    service_accounts: Vec<AdminServiceAccountRow>,
-    notice: String,
-}
-
-#[derive(Template)]
-#[template(path = "admin_user.html")]
-struct AdminUserTemplate {
-    site_header: SiteHeader,
-    site_nav: String,
-    copyright_years: String,
-    user_id: String,
-    username: String,
-    enabled: bool,
-    email_verified: bool,
-    notice: String,
-    rows: Vec<ProfileViewRow>,
 }
 
 /// # Errors

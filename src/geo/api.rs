@@ -1,20 +1,13 @@
 //! Public HTTP handler for country region lookups.
 
+mod regions_query;
+mod regions_response;
+pub use regions_query::RegionsQuery;
+pub use regions_response::RegionsResponse;
+
 use axum::{Json, extract::Query};
-use serde::{Deserialize, Serialize};
 
 use super::{country_code_for_name, region_prompt_for_country_code, regions_for_country_code};
-
-#[derive(Debug, Deserialize)]
-pub struct RegionsQuery {
-    pub country: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RegionsResponse {
-    pub prompt: String,
-    pub regions: Vec<&'static str>,
-}
 
 /// `GET /geo/regions?country=…` — returns first-level regions for a country name.
 pub async fn regions_handler(Query(query): Query<RegionsQuery>) -> Json<RegionsResponse> {

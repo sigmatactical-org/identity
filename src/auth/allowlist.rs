@@ -9,6 +9,7 @@ pub(crate) struct UriAllowlist {
 }
 
 impl UriAllowlist {
+    /// Allowlist from exact-match URI entries.
     pub(crate) fn new(entries: Vec<String>) -> Self {
         let mut exact = Vec::new();
         let mut prefix = Vec::new();
@@ -25,6 +26,7 @@ impl UriAllowlist {
         Self { exact, prefix }
     }
 
+    /// Whether `uri` is on the allowlist.
     pub(crate) fn is_allowed(&self, uri: &str) -> bool {
         if self.exact.iter().any(|e| e == uri) {
             return true;

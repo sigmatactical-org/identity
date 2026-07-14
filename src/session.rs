@@ -7,10 +7,15 @@ use tower_sessions::{Expiry, Session, SessionManagerLayer, SessionStore, service
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing::debug;
 
+/// Session slot: CSRF token.
 pub(crate) static SESSION_KEY_CSRF_TOKEN: &str = "identity_csrf_token";
+/// Session slot: serialized token set.
 pub(crate) static SESSION_KEY_JWT: &str = "identity_jwt";
+/// Session slot: authenticated user id.
 pub(crate) static SESSION_KEY_USERID: &str = "identity_userid";
+/// Session slot: pending login callback.
 pub(crate) static SESSION_KEY_LOGIN_CALLBACK: &str = "identity_logincallback_parameters";
+/// Session slot: app URI that initiated logout.
 pub(crate) static SESSION_KEY_LOGOUT_APP_URI: &str = "identity_logout_app_uri";
 /// Short-lived cookie carrying post-logout app redirect through the IdP round-trip.
 pub(crate) static LOGOUT_APP_URI_COOKIE: &str = "identity.logout.app_uri";
@@ -23,6 +28,7 @@ pub(crate) enum SameSiteSetting {
 }
 
 impl SameSiteSetting {
+    /// Cookie SameSite mode from its env string.
     pub(crate) fn from_env_string(value: Option<String>) -> Self {
         match value.as_deref().map(|s| s.to_lowercase()).as_deref() {
             Some("none") => SameSiteSetting::None,
@@ -32,6 +38,7 @@ impl SameSiteSetting {
         }
     }
 
+    /// Convert to the tower-sessions SameSite type.
     pub(crate) fn to_tower_sessions_same_site(&self) -> tower_sessions::cookie::SameSite {
         match self {
             SameSiteSetting::None => tower_sessions::cookie::SameSite::None,
@@ -53,6 +60,7 @@ pub(crate) struct SessionSetup {
 }
 
 impl SessionSetup {
+    /// Session middleware over the given store.
     pub(crate) fn get_session_layer<Store: SessionStore>(
         &self,
         store: Store,

@@ -17,6 +17,7 @@ pub fn var(name: &str) -> Result<String> {
     env::var(&legacy).with_context(|| format!("missing {identity} (or deprecated {legacy})"))
 }
 
+/// Env var as `Some` only when set and non-empty.
 pub fn var_optional(name: &str) -> Option<String> {
     let identity = format!("IDENTITY_{name}");
     env::var(&identity)
@@ -45,6 +46,7 @@ pub fn database_url() -> String {
     var_optional("DATABASE_URL").unwrap_or_else(|| sigma_pg::service_database_url("identity"))
 }
 
+/// Whether `SIGMA_ENV` marks this deployment as production.
 pub fn is_production() -> bool {
     matches!(
         var_optional("ENV")
@@ -54,6 +56,7 @@ pub fn is_production() -> bool {
     )
 }
 
+/// Dev-only TLS bypass flag; refused in production.
 pub fn danger_accept_invalid_certs() -> Result<bool> {
     let enabled =
         var_optional("DANGER_ACCEPT_INVALID_CERTS").is_some_and(|v| v.eq_ignore_ascii_case("true"));
@@ -65,6 +68,7 @@ pub fn danger_accept_invalid_certs() -> Result<bool> {
     Ok(enabled)
 }
 
+/// Require a session secret long enough for cookie signing.
 pub fn validate_session_secret(secret: &str) -> Result<()> {
     if secret.len() < MIN_SESSION_SECRET_BYTES {
         bail!(

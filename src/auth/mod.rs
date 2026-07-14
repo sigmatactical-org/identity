@@ -66,6 +66,7 @@ pub(crate) struct AuthorizeData {
 }
 
 impl AuthorizeData {
+    /// Bundle the parameters of one in-flight authorization request.
     pub(crate) fn new(
         auth_url: Url,
         csrf_token: CsrfToken,
@@ -91,6 +92,7 @@ pub(crate) struct SessionTokens {
 }
 
 impl SessionTokens {
+    /// Token set as stored in the session.
     pub(crate) fn new(
         access_token: &AccessToken,
         refresh_token: Option<&RefreshToken>,
@@ -109,14 +111,17 @@ impl SessionTokens {
         }
     }
 
+    /// The bearer access token.
     pub(crate) fn access_token(&self) -> &str {
         &self.access_token
     }
 
+    /// The refresh token, if the IdP issued one.
     pub(crate) fn refresh_token(&self) -> Option<String> {
         self.refresh_token.as_ref().cloned()
     }
 
+    /// Whether the access token lives longer than `threshold` seconds.
     pub(crate) fn ttl_gt(&self, threshold: u64) -> bool {
         let now = SystemTime::now();
         self.expires_at
@@ -274,6 +279,7 @@ impl FromRef<AppConfigurationState> for LogoutAppSettings {
     }
 }
 
+/// Build the auth route group.
 pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
     oidc_client: OIDCClient,
     session_layer: &SessionManagerLayer<S, PrivateCookie>,
@@ -333,6 +339,7 @@ pub(crate) fn auth_routes<S: SessionStore + Clone + 'static>(
     router
 }
 
+/// Build the register route group.
 pub(crate) fn register_routes<S: SessionStore + Clone + 'static>(
     registration_settings: RegistrationAppSettings,
     keycloak_admin: KeycloakAdmin,
@@ -365,6 +372,7 @@ pub(crate) fn register_routes<S: SessionStore + Clone + 'static>(
         .with_state(registration_settings)
 }
 
+/// Build the profile route group.
 pub(crate) fn profile_routes<S: SessionStore + Clone + 'static>(
     profile_settings: RegistrationAppSettings,
     keycloak_admin: KeycloakAdmin,
@@ -381,6 +389,7 @@ pub(crate) fn profile_routes<S: SessionStore + Clone + 'static>(
         .with_state(profile_settings)
 }
 
+/// Build the admin route group.
 pub(crate) fn admin_routes<S: SessionStore + Clone + 'static>(
     keycloak_admin: KeycloakAdmin,
     session_layer: &SessionManagerLayer<S, PrivateCookie>,
@@ -421,6 +430,7 @@ pub(crate) fn admin_routes<S: SessionStore + Clone + 'static>(
         .layer(session_layer.clone())
 }
 
+/// Cryptographically random alphanumeric string (state/nonce).
 pub(crate) fn random_alphanumeric_string(length: usize) -> String {
     use rand::distr::Distribution as _;
     rand::distr::Alphanumeric
@@ -668,6 +678,7 @@ mod tests {
         serde_json::to_string(&token_response).expect("Serialize token response")
     }
 
+    /// Test harness bundling a mock IdP with a configured client.
     pub struct MockSetup {
         client_id: String,
         cookie_name: String,
@@ -744,6 +755,7 @@ mod tests {
             }
         }
 
+        /// Router wired against the mock IdP.
         pub fn router(&self) -> Router {
             let app_config = AppConfigurationState {
                 login_app_settings: LoginAppSettings::new(
@@ -807,6 +819,7 @@ mod tests {
                 .await;
         }
 
+        /// The client under test.
         pub fn oidc_client(&self) -> &OIDCClient {
             &self.oidc_client
         }
