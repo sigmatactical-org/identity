@@ -34,6 +34,9 @@ struct IndexTemplate {
     profile_url: String,
     register_url: String,
     sign_in_url: String,
+    addresses_url: String,
+    payments_url: String,
+    orders_url: String,
 }
 
 #[derive(Template)]
@@ -127,6 +130,9 @@ struct ProfileViewTemplate {
     return_url: String,
     edit_url: String,
     logout_url: String,
+    addresses_url: String,
+    payments_url: String,
+    orders_url: String,
     saved: bool,
     rows: Vec<ProfileViewRow>,
 }
@@ -211,13 +217,16 @@ pub fn render_index_html(signed_in: bool, is_admin: bool) -> Result<String, aska
     let links = sigma_identity_nav::auth_links(&base, &base, "/");
     IndexTemplate {
         site_header: page_header("Sigma Identity"),
-        site_nav: site_nav("/", true)?,
+        site_nav: site_nav("/", false)?,
         copyright_years: copyright_years(),
         signed_in,
         is_admin,
         profile_url: links.profile_url,
         register_url: links.register_url,
         sign_in_url: links.sign_in_url,
+        addresses_url: crate::config::addresses_public_base_url(),
+        payments_url: crate::config::payments_public_base_url(),
+        orders_url: crate::config::orders_public_base_url(),
     }
     .render()
 }
@@ -228,7 +237,7 @@ pub fn render_index_html(signed_in: bool, is_admin: bool) -> Result<String, aska
 pub fn render_exampleapp_html() -> Result<String, askama::Error> {
     ExampleAppTemplate {
         site_header: page_header("Sigma Identity"),
-        site_nav: site_nav("/exampleapp/", true)?,
+        site_nav: site_nav("/exampleapp/", false)?,
         copyright_years: copyright_years(),
     }
     .render()
@@ -240,7 +249,7 @@ pub fn render_exampleapp_html() -> Result<String, askama::Error> {
 pub fn render_conformance_html() -> Result<String, askama::Error> {
     ConformanceTemplate {
         site_header: page_header("Sigma Identity"),
-        site_nav: site_nav("/conformance/", true)?,
+        site_nav: site_nav("/conformance/", false)?,
         copyright_years: copyright_years(),
     }
     .render()
@@ -260,7 +269,7 @@ pub fn render_register_html(
 ) -> Result<String, askama::Error> {
     RegisterTemplate {
         site_header: section_header("Register"),
-        site_nav: site_nav("/register", true)?,
+        site_nav: site_nav("/register", false)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         email: email.to_string(),
@@ -283,7 +292,7 @@ pub fn render_register_success_html(
 ) -> Result<String, askama::Error> {
     RegisterSuccessTemplate {
         site_header: section_header("Registration complete"),
-        site_nav: site_nav("/register/success", true)?,
+        site_nav: site_nav("/register/success", false)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         auto_approved,
@@ -300,7 +309,7 @@ pub fn render_register_verified_html(
 ) -> Result<String, askama::Error> {
     RegisterVerifiedTemplate {
         site_header: section_header("Email verified"),
-        site_nav: site_nav("/register/verified", true)?,
+        site_nav: site_nav("/register/verified", false)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         activated,
@@ -315,8 +324,9 @@ fn profile_row(label: &str, value: &str) -> ProfileViewRow {
     }
 }
 
-/// Render the read-only profile view listing every field ("unfilled" for
-/// empties), with Edit, Sign out, and (optionally) return-to-app actions.
+/// Render the read-only profile view listing only filled fields, with Edit,
+/// Sign out, account-service links, and (optionally) a return-to-app Back
+/// control.
 ///
 /// # Errors
 ///
@@ -328,27 +338,34 @@ pub fn render_profile_view_html(
     fields: &ProfileFields,
     saved: bool,
 ) -> Result<String, askama::Error> {
-    let rows = vec![
-        profile_row("Username", &fields.username),
-        profile_row("Email", &fields.email),
-        profile_row("First name", &fields.first_name),
-        profile_row("Last name", &fields.last_name),
-        profile_row("Phone", &fields.phone),
-        profile_row("Company", &fields.company),
-        profile_row("Street address", &fields.street),
-        profile_row("City", &fields.city),
-        profile_row("State / region", &fields.region),
-        profile_row("Postal code", &fields.postal_code),
-        profile_row("Country", &fields.country),
-        profile_row("Date of birth", &fields.birthdate),
-    ];
+    let rows = [
+        ("Username", fields.username.as_str()),
+        ("Email", fields.email.as_str()),
+        ("First name", fields.first_name.as_str()),
+        ("Last name", fields.last_name.as_str()),
+        ("Phone", fields.phone.as_str()),
+        ("Company", fields.company.as_str()),
+        ("Street address", fields.street.as_str()),
+        ("City", fields.city.as_str()),
+        ("State / region", fields.region.as_str()),
+        ("Postal code", fields.postal_code.as_str()),
+        ("Country", fields.country.as_str()),
+        ("Date of birth", fields.birthdate.as_str()),
+    ]
+    .into_iter()
+    .filter(|(_, value)| !value.trim().is_empty())
+    .map(|(label, value)| profile_row(label, value))
+    .collect();
     ProfileViewTemplate {
         site_header: section_header("Profile"),
-        site_nav: site_nav("/profile", true)?,
+        site_nav: site_nav("/profile", false)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         edit_url: edit_url.to_string(),
         logout_url: logout_url.to_string(),
+        addresses_url: crate::config::addresses_public_base_url(),
+        payments_url: crate::config::payments_public_base_url(),
+        orders_url: crate::config::orders_public_base_url(),
         saved,
         rows,
     }
@@ -375,7 +392,7 @@ pub fn render_profile_html(
         .collect();
     ProfileEditTemplate {
         site_header: section_header("Edit profile"),
-        site_nav: site_nav("/profile", true)?,
+        site_nav: site_nav("/profile", false)?,
         copyright_years: copyright_years(),
         return_url: return_url.to_string(),
         cancel_url: cancel_url.to_string(),
@@ -412,7 +429,7 @@ pub fn render_admin_users_html(
 ) -> Result<String, askama::Error> {
     AdminUsersTemplate {
         site_header: admin_section_header("Users"),
-        site_nav: site_nav("/admin/users", true)?,
+        site_nav: site_nav("/admin/users", false)?,
         copyright_years: copyright_years(),
         search: search.to_string(),
         has_prev,
@@ -441,7 +458,7 @@ pub fn render_admin_user_html(
 ) -> Result<String, askama::Error> {
     AdminUserTemplate {
         site_header: admin_section_header(&username),
-        site_nav: site_nav(&format!("/admin/users/{user_id}"), true)?,
+        site_nav: site_nav(&format!("/admin/users/{user_id}"), false)?,
         copyright_years: copyright_years(),
         user_id: user_id.to_string(),
         username,
@@ -479,6 +496,9 @@ mod tests {
         assert!(html.contains(">Sign in<"));
         assert!(html.contains(">Register<"));
         assert!(!html.contains(">Update profile<"));
+        assert!(html.contains("site-directory-name\">Addresses</span>"));
+        assert!(html.contains("site-directory-name\">Payments</span>"));
+        assert!(html.contains("site-directory-name\">Orders</span>"));
         let sign_in_pos = html.find(">Sign in<").expect("sign in link");
         let register_pos = html.find(">Register<").expect("register link");
         assert!(
@@ -689,9 +709,16 @@ mod tests {
         .expect("profile view template");
         assert!(html.contains("sigma-dial-root"));
         assert!(html.contains("bob@example.com"));
-        // Empty fields render as "Unfilled".
-        assert!(html.contains("Unfilled"));
+        assert!(html.contains("Bob"));
+        // Empty optional fields are omitted from the read-only view.
+        assert!(!html.contains("Unfilled"));
+        assert!(!html.contains("Phone"));
+        assert!(html.contains("Addresses"));
+        assert!(html.contains("Payments"));
+        assert!(html.contains("Orders"));
+        assert!(!html.contains("Updates"));
         assert!(html.contains("Sign out"));
         assert!(html.contains("Edit"));
+        assert!(html.contains(">Back<"));
     }
 }

@@ -422,7 +422,9 @@ pub(crate) fn admin_routes<S: SessionStore + Clone + 'static>(
 }
 
 pub(crate) fn random_alphanumeric_string(length: usize) -> String {
-    rand::Rng::sample_iter(rand::rng(), &rand::distr::Alphanumeric)
+    use rand::distr::Distribution as _;
+    rand::distr::Alphanumeric
+        .sample_iter(rand::rng())
         .take(length)
         .map(char::from)
         .collect::<String>()

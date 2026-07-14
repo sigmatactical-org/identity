@@ -590,9 +590,11 @@ impl KeycloakAdmin {
             let body = response.text().await.unwrap_or_default();
             bail!("Keycloak list clients failed with HTTP {status}: {body}");
         }
-        let clients: Vec<ClientSummary> = response
-            .json()
+        let body = response
+            .text()
             .await
+            .context("Failed to read Keycloak list clients response")?;
+        let clients: Vec<ClientSummary> = serde_json::from_str(&body)
             .context("Failed to parse Keycloak list clients response")?;
 
         let mut rows = Vec::new();
@@ -613,9 +615,11 @@ impl KeycloakAdmin {
             if !response.status().is_success() {
                 continue;
             }
-            let user: UserSummary = response
-                .json()
+            let body = response
+                .text()
                 .await
+                .context("Failed to read Keycloak service-account-user response")?;
+            let user: UserSummary = serde_json::from_str(&body)
                 .context("Failed to parse Keycloak service-account-user response")?;
             rows.push(ServiceAccountRow {
                 client_id: client.client_id,

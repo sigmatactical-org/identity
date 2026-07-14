@@ -233,6 +233,30 @@ pub fn contact_public_base_url() -> String {
         .unwrap_or_else(|| "http://127.0.0.1:8083/".to_string())
 }
 
+/// Public base URL of the addresses service (profile account links).
+pub fn addresses_public_base_url() -> String {
+    var_optional("ADDRESSES_PUBLIC_URL")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| normalize_service_base_url(&value))
+        .unwrap_or_else(|| "http://127.0.0.1:8089/".to_string())
+}
+
+/// Public base URL of the payments service (profile account links).
+pub fn payments_public_base_url() -> String {
+    var_optional("PAYMENTS_PUBLIC_URL")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| normalize_service_base_url(&value))
+        .unwrap_or_else(|| "http://127.0.0.1:8090/".to_string())
+}
+
+/// Public base URL of the orders service (profile account links).
+pub fn orders_public_base_url() -> String {
+    var_optional("ORDERS_PUBLIC_URL")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| normalize_service_base_url(&value))
+        .unwrap_or_else(|| "http://127.0.0.1:8085/".to_string())
+}
+
 /// Realm roles that grant access to `/admin/*` (comma-separated). Defaults to
 /// `sigma-admin`.
 pub fn admin_realm_roles() -> Vec<String> {

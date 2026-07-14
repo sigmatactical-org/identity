@@ -1,5 +1,8 @@
 # sigma-identity
 
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![MSRV](https://img.shields.io/badge/MSRV-1.97.0-blue.svg)](https://www.rust-lang.org)
+
 Backend-for-frontend identity service for Sigma Tactical Group. Handles OpenID Connect login, server-side JWT sessions (http-only cookie), CSRF-protected API proxying, and static/SPA file serving.
 
 Forked from [ErikWegner/rust-identity-service](https://github.com/ErikWegner/rust-identity-service) (MIT).

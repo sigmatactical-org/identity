@@ -42,6 +42,30 @@
                 </a>
               </li>
               {% endif %}
+              <li>
+                <a class="site-directory-card" href="{{ addresses_url }}">
+                  <span class="site-directory-name">Addresses</span>
+                  <span class="site-directory-meta">
+                    <span class="site-directory-desc">Manage billing and shipping addresses.</span>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a class="site-directory-card" href="{{ payments_url }}">
+                  <span class="site-directory-name">Payments</span>
+                  <span class="site-directory-meta">
+                    <span class="site-directory-desc">Manage saved payment methods.</span>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a class="site-directory-card" href="{{ orders_url }}">
+                  <span class="site-directory-name">Orders</span>
+                  <span class="site-directory-meta">
+                    <span class="site-directory-desc">Order status, deposits, and fulfillment tracking.</span>
+                  </span>
+                </a>
+              </li>
               {% if is_admin %}
               <li>
                 <a class="site-directory-card" href="/admin/users">

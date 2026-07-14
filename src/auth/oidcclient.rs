@@ -279,10 +279,12 @@ impl OIDCClient {
             ));
         }
 
-        let parsed: IntrospectionResponse = response
-            .json()
+        let body = response
+            .text()
             .await
-            .context("Failed to parse token introspection response")?;
+            .context("Failed to read token introspection response")?;
+        let parsed: IntrospectionResponse =
+            serde_json::from_str(&body).context("Failed to parse token introspection response")?;
 
         Ok(IntrospectionResult {
             active: parsed.active,
