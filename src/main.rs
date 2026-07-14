@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use mimalloc::MiMalloc;
 use sigma_identity::run;
 use tracing::{error, trace};

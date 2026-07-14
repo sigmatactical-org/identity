@@ -8,6 +8,8 @@
 //! "Sign in" button when signed out and a "Welcome, {username}" link to the
 //! profile page when signed in; sign-out lives on the profile page.
 
+#![forbid(unsafe_code)]
+
 use askama::Template;
 
 /// Resolved identity URLs for a service's navbar.

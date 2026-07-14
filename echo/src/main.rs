@@ -1,5 +1,7 @@
 //! Minimal HTTP echo server for identity E2E proxy tests.
 
+#![forbid(unsafe_code)]
+
 use std::convert::Infallible;
 
 use http_body_util::{BodyExt, Full};
