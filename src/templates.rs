@@ -34,7 +34,7 @@ use sigma_theme::copyright_years;
 use sigma_theme::nav::{Breadcrumb, SiteHeader, site_menu};
 
 fn page_header() -> SiteHeader {
-    SiteHeader::new().with_menu(site_menu(None))
+    SiteHeader::new("Identity").with_menu(site_menu(None))
 }
 
 fn section_header(section: &str) -> SiteHeader {
