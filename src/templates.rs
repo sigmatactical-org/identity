@@ -31,20 +31,20 @@ pub(crate) use register_verified_template::RegisterVerifiedTemplate;
 
 use askama::Template;
 use sigma_theme::copyright_years;
-use sigma_theme::nav::{Breadcrumb, SiteHeader};
+use sigma_theme::nav::{Breadcrumb, SiteHeader, site_menu};
 
-fn page_header(brand: &str) -> SiteHeader {
-    SiteHeader::new(brand)
+fn page_header() -> SiteHeader {
+    SiteHeader::new().with_menu(site_menu(None))
 }
 
 fn section_header(section: &str) -> SiteHeader {
-    page_header("Sigma Identity")
+    page_header()
         .with_breadcrumb(Breadcrumb::link("/", "Identity"))
         .with_breadcrumb(Breadcrumb::current(section))
 }
 
 fn admin_section_header(section: &str) -> SiteHeader {
-    page_header("Sigma Identity")
+    page_header()
         .with_breadcrumb(Breadcrumb::link("/", "Identity"))
         .with_breadcrumb(Breadcrumb::link("/admin", "Admin"))
         .with_breadcrumb(Breadcrumb::current(section))
@@ -61,7 +61,7 @@ pub fn render_index_html(signed_in: bool, is_admin: bool) -> Result<String, aska
     let base = crate::config::public_base_url();
     let links = sigma_identity_nav::auth_links(&base, &base, "/");
     IndexTemplate {
-        site_header: page_header("Sigma Identity"),
+        site_header: page_header(),
         site_nav: site_nav("/", false)?,
         copyright_years: copyright_years(),
         signed_in,
@@ -81,7 +81,7 @@ pub fn render_index_html(signed_in: bool, is_admin: bool) -> Result<String, aska
 /// Returns [`askama::Error`] when template rendering fails.
 pub fn render_exampleapp_html() -> Result<String, askama::Error> {
     ExampleAppTemplate {
-        site_header: page_header("Sigma Identity"),
+        site_header: page_header(),
         site_nav: site_nav("/exampleapp/", false)?,
         copyright_years: copyright_years(),
     }
@@ -93,7 +93,7 @@ pub fn render_exampleapp_html() -> Result<String, askama::Error> {
 /// Returns [`askama::Error`] when template rendering fails.
 pub fn render_conformance_html() -> Result<String, askama::Error> {
     ConformanceTemplate {
-        site_header: page_header("Sigma Identity"),
+        site_header: page_header(),
         site_nav: site_nav("/conformance/", false)?,
         copyright_years: copyright_years(),
     }
@@ -561,7 +561,8 @@ mod tests {
         assert!(html.contains("Addresses"));
         assert!(html.contains("Payments"));
         assert!(html.contains("Orders"));
-        assert!(!html.contains("Updates"));
+        // Updates appears only in the global site menu, not the account cards.
+        assert_eq!(html.matches("site-directory-card").count(), 3);
         assert!(html.contains("Sign out"));
         assert!(html.contains("Edit"));
         assert!(html.contains(">Back<"));
