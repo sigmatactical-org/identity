@@ -133,7 +133,7 @@ impl ConformanceClient {
         loop {
             let info = self.get_module_info(module_id).await?;
             let status = info.get("status").and_then(Value::as_str).unwrap_or("");
-            if terminal_states.iter().any(|s| *s == status) {
+            if terminal_states.contains(&status) {
                 return Ok(info);
             }
             if Instant::now() >= deadline {

@@ -50,11 +50,11 @@ pub async fn create_test_plan_adaptive(
                 let msg = format!("{err:#}");
                 if let Some(caps) = conflict_re.captures(&msg) {
                     let key = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-                    if let Some(map) = variant.as_mut() {
-                        if map.remove(key).is_some() {
-                            warn!("Plan {plan_name}: dropping variant {key} (already set by plan)");
-                            continue;
-                        }
+                    if let Some(map) = variant.as_mut()
+                        && map.remove(key).is_some()
+                    {
+                        warn!("Plan {plan_name}: dropping variant {key} (already set by plan)");
+                        continue;
                     }
                 }
                 return Err(err);
@@ -108,7 +108,7 @@ pub async fn run_module(
     let mut waiting_actions = 0u32;
     let mut result = "UNKNOWN".to_string();
 
-    if env_truthy("CONFORMANCE_ENSURE_IDENTITY") {
+    if crate::config::ensure_identity() {
         let _ = client
             .wait_for_status(&module_id, "WAITING", Duration::from_secs(120))
             .await;
@@ -139,7 +139,7 @@ pub async fn run_module(
             }
         }
 
-        if status == "WAITING" && env_truthy("CONFORMANCE_ENSURE_IDENTITY") {
+        if status == "WAITING" && crate::config::ensure_identity() {
             if !identity_started {
                 let restart = !env_is_false("CONFORMANCE_RESTART_IDENTITY");
                 ensure_identity_running(restart).await?;
@@ -229,12 +229,13 @@ pub async fn run_plan(
             }
         };
         info!("[{}] {}", row.result, row.name);
-        if !is_passing(&row.result) && !row.module_id.is_empty() {
-            if let Ok(log) = client.get_module_log(&row.module_id).await {
-                let formatted = format_module_log(&log, true);
-                if !formatted.is_empty() {
-                    println!("\n--- {module_name} ---\n{formatted}\n");
-                }
+        if !is_passing(&row.result)
+            && !row.module_id.is_empty()
+            && let Ok(log) = client.get_module_log(&row.module_id).await
+        {
+            let formatted = format_module_log(&log, true);
+            if !formatted.is_empty() {
+                println!("\n--- {module_name} ---\n{formatted}\n");
             }
         }
         results.push(row);
@@ -266,12 +267,6 @@ fn env_f64(name: &str, default: f64) -> f64 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
-}
-
-fn env_truthy(name: &str) -> bool {
-    std::env::var(name)
-        .map(|v| !matches!(v.as_str(), "0" | "false" | "FALSE" | ""))
-        .unwrap_or(false)
 }
 
 fn env_is_false(name: &str) -> bool {

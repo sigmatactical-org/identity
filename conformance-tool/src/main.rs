@@ -60,22 +60,6 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .init();
 
-    // Environment mutation is process-local for the conformance runner only.
-    unsafe {
-        std::env::set_var("CONFORMANCE_ENSURE_IDENTITY", "1");
-        std::env::set_var(
-            "CONFORMANCE_IDENTITY_START_CMD",
-            std::env::var("CONFORMANCE_IDENTITY_START_CMD").unwrap_or_else(|_| {
-                "docker compose -f conformance/docker-compose.yml exec -d identity bash -lc \
-                'pkill -x sigma-identity 2>/dev/null || true; \
-                for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x sigma-identity >/dev/null || break; sleep 1; done; \
-                cd /workspace && cp .env.conformance-run .env 2>/dev/null || cp .env.conformance-ci .env; \
-                ./target/release/sigma-identity >>/tmp/sigma-identity.log 2>&1'"
-                    .into()
-            }),
-        );
-    }
-
     match Cli::parse().command {
         Command::Bootstrap {
             conformance_server,
@@ -138,6 +122,7 @@ async fn bootstrap(server: &str, client_id: &str, client_secret: &str) -> Result
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run(
     server: &str,
     client_id: &str,

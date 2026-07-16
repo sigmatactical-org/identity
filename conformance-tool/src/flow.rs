@@ -34,15 +34,12 @@ pub async fn ensure_identity_running(restart: bool) -> Result<()> {
         .trim_end_matches('/')
         .to_string();
 
-    if !restart {
-        if curl(&["-sf", &identity_url], true).await.is_ok() {
-            info!("Identity already running at {identity_url}");
-            return Ok(());
-        }
+    if !restart && curl(&["-sf", &identity_url], true).await.is_ok() {
+        info!("Identity already running at {identity_url}");
+        return Ok(());
     }
 
-    let start_cmd = std::env::var("CONFORMANCE_IDENTITY_START_CMD")
-        .context("CONFORMANCE_IDENTITY_START_CMD must be set (see scripts/conformance-stack.sh)")?;
+    let start_cmd = crate::config::identity_start_cmd();
     info!("Starting identity: {start_cmd}");
     let status = Command::new("bash")
         .arg("-lc")

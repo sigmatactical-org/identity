@@ -4,6 +4,29 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value, json};
 
+/// Whether the runner should start/restart sigma-identity itself when a
+/// module is waiting on the relying party. Defaults to on; set
+/// `CONFORMANCE_ENSURE_IDENTITY=0` (or `false`) to drive identity manually.
+pub fn ensure_identity() -> bool {
+    !std::env::var("CONFORMANCE_ENSURE_IDENTITY")
+        .map(|v| matches!(v.as_str(), "0" | "false" | "FALSE"))
+        .unwrap_or(false)
+}
+
+/// Shell command that (re)starts sigma-identity for a conformance run:
+/// `CONFORMANCE_IDENTITY_START_CMD` when set (`scripts/conformance-stack.sh`
+/// exports it), otherwise the docker-compose default.
+pub fn identity_start_cmd() -> String {
+    std::env::var("CONFORMANCE_IDENTITY_START_CMD").unwrap_or_else(|_| {
+        "docker compose -f conformance/docker-compose.yml exec -d identity bash -lc \
+        'pkill -x sigma-identity 2>/dev/null || true; \
+        for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x sigma-identity >/dev/null || break; sleep 1; done; \
+        cd /workspace && cp .env.conformance-run .env 2>/dev/null || cp .env.conformance-ci .env; \
+        ./target/release/sigma-identity >>/tmp/sigma-identity.log 2>&1'"
+            .into()
+    })
+}
+
 pub fn default_variant() -> Map<String, Value> {
     json!({
         "client_auth_type": "client_secret_post",
@@ -99,15 +122,15 @@ fn substitute_placeholders(
     Ok(raw
         .replace(
             "{CLIENT_ID}",
-            &serde_json::to_string(client_id)?.trim_matches('"'),
+            serde_json::to_string(client_id)?.trim_matches('"'),
         )
         .replace(
             "{CLIENT_SECRET}",
-            &serde_json::to_string(client_secret)?.trim_matches('"'),
+            serde_json::to_string(client_secret)?.trim_matches('"'),
         )
         .replace(
             "{VERSION}",
-            &serde_json::to_string(version)?.trim_matches('"'),
+            serde_json::to_string(version)?.trim_matches('"'),
         ))
 }
 
