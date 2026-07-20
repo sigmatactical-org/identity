@@ -1,13 +1,12 @@
-use anyhow::Result;
+mod refresh_lock_manager;
+pub(crate) use refresh_lock_manager::RefreshLockManager;
+
 use axum::{
     Extension, Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 use axum_macros::debug_handler;
-use std::collections::HashSet;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tower_sessions::Session;
 use tracing::debug;
 
@@ -17,34 +16,6 @@ use crate::{
 };
 
 use super::OIDCClient;
-
-#[derive(Debug, Clone)]
-pub(crate) struct RefreshLockManager {
-    refreshing: Arc<Mutex<HashSet<String>>>,
-    remaining_secs_threshold: u64,
-}
-
-impl RefreshLockManager {
-    /// Refresh policy: renew when less than the threshold remains.
-    pub(crate) fn new(remaining_secs_threshold: u64) -> Self {
-        Self {
-            refreshing: Arc::new(Mutex::new(HashSet::new())),
-            remaining_secs_threshold,
-        }
-    }
-
-    async fn try_acquire(&self, userid: &str) -> Result<(), Response> {
-        let mut users = self.refreshing.lock().await;
-        if !users.insert(userid.to_string()) {
-            return Err((StatusCode::CONFLICT, "Refresh pending...").into_response());
-        }
-        Ok(())
-    }
-
-    async fn release(&self, userid: &str) {
-        self.refreshing.lock().await.remove(userid);
-    }
-}
 
 #[debug_handler]
 pub(crate) async fn refresh(
@@ -86,10 +57,7 @@ pub(crate) async fn refresh(
         return Err((StatusCode::BAD_REQUEST, "Refresh token missing").into_response());
     };
 
-    let response = match client
-        .refresh_token(refresh_token.as_str(), Some(&userid))
-        .await
-    {
+    let response = match client.refresh_token(refresh_token, Some(&userid)).await {
         Ok(jwt) => {
             let _ = session.insert(SESSION_KEY_JWT, jwt).await;
             (StatusCode::OK, Json("Refresh successful")).into_response()

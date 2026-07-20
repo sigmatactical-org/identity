@@ -1,3 +1,10 @@
+mod admin_action_query;
+mod admin_deps;
+mod admin_list_query;
+pub(crate) use admin_action_query::AdminActionQuery;
+pub(crate) use admin_deps::AdminDeps;
+pub(crate) use admin_list_query::AdminListQuery;
+
 use axum::{
     Extension,
     extract::{Path, Query},
@@ -6,55 +13,18 @@ use axum::{
 };
 use axum_macros::debug_handler;
 use chrono::{TimeZone, Utc};
-use serde::Deserialize;
 use tower_sessions::Session;
 use tracing::error;
-use url::Url;
 
 use crate::config;
-use crate::session::SESSION_KEY_JWT;
 use crate::templates;
 
-use super::{KeycloakAdmin, SessionTokens};
-
-#[derive(Clone)]
-pub(crate) struct AdminDeps {
-    pub admin: KeycloakAdmin,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct AdminListQuery {
-    #[serde(default)]
-    q: String,
-    #[serde(default)]
-    page: u32,
-    #[serde(default)]
-    notice: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct AdminActionQuery {
-    #[serde(default)]
-    notice: String,
-}
-
-async fn session_tokens(session: &Session) -> Option<SessionTokens> {
-    session.get(SESSION_KEY_JWT).await.ok().flatten()
-}
+use super::{KeycloakAdmin, SessionTokens, keycloak_admin::attribute_value, session_tokens};
 
 fn admin_login_redirect() -> Redirect {
     let base = config::public_base_url();
-    let public_base = base.trim_end_matches('/');
-    let target = format!("{public_base}/admin/users");
-    let callback = format!("{public_base}/auth/callback");
-    let mut login_url = Url::parse(&format!("{public_base}/auth/login")).expect("valid login path");
-    {
-        let mut pairs = login_url.query_pairs_mut();
-        pairs.append_pair("app_uri", &target);
-        pairs.append_pair("redirect_uri", &callback);
-        pairs.append_pair("scope", "openid");
-    }
-    Redirect::to(login_url.as_str())
+    let target = format!("{}/admin/users", base.trim_end_matches('/'));
+    Redirect::to(&super::login_url_for(&target))
 }
 
 fn tokens_are_admin(tokens: &SessionTokens) -> bool {
@@ -88,12 +58,28 @@ fn format_timestamp_ms(ms: Option<i64>) -> String {
         .unwrap_or_default()
 }
 
-fn display_value(value: &str) -> String {
-    if value.trim().is_empty() {
+/// A detail row, showing a placeholder for an unfilled value.
+fn profile_row(label: &str, value: String) -> templates::ProfileViewRow {
+    let value = if value.trim().is_empty() {
         "Unfilled".to_string()
     } else {
-        value.to_string()
+        value
+    };
+    templates::ProfileViewRow {
+        label: label.to_string(),
+        value,
     }
+}
+
+fn attribute_or_default(
+    attributes: &Option<std::collections::HashMap<String, Vec<String>>>,
+    key: &str,
+) -> String {
+    attribute_value(attributes, key).unwrap_or_default()
+}
+
+fn yes_no(value: bool) -> String {
+    if value { "Yes" } else { "No" }.to_string()
 }
 
 fn notice_message(notice: &str) -> Option<&'static str> {
@@ -196,10 +182,8 @@ pub(crate) async fn admin_user_detail(
     Query(query): Query<AdminActionQuery>,
 ) -> Result<Html<String>, Response> {
     require_admin(&session).await?;
-    let profile = keycloak.get_user_profile(&user_id).await.map_err(|error| {
-        error!("Failed to load user {user_id}: {error:?}");
-        (StatusCode::NOT_FOUND, "User not found.").into_response()
-    })?;
+    // One fetch: derive both the profile fields and the account flags from the
+    // same user representation (get_user_profile would re-request it).
     let account = keycloak.get_user(&user_id).await.map_err(|error| {
         error!("Failed to load account {user_id}: {error:?}");
         (StatusCode::NOT_FOUND, "User not found.").into_response()
@@ -210,85 +194,45 @@ pub(crate) async fn admin_user_detail(
         .filter(|value| !value.is_empty())
         .or_else(|| attribute_value(&account.attributes, "createdDate"))
         .unwrap_or_default();
+    let username = account.username.unwrap_or_default();
+    let enabled = account.enabled;
+    let email_verified = account.email_verified;
+    let attributes = account.attributes;
     let rows = vec![
-        templates::ProfileViewRow {
-            label: "User ID".into(),
-            value: user_id.clone(),
-        },
-        templates::ProfileViewRow {
-            label: "Username".into(),
-            value: display_value(&profile.username.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Email".into(),
-            value: display_value(&profile.email.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "First name".into(),
-            value: display_value(&profile.first_name.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Last name".into(),
-            value: display_value(&profile.last_name.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Phone".into(),
-            value: display_value(&profile.phone.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Company".into(),
-            value: display_value(&profile.company.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Street address".into(),
-            value: display_value(&profile.street.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "City".into(),
-            value: display_value(&profile.city.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "State / region".into(),
-            value: display_value(&profile.region.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Postal code".into(),
-            value: display_value(&profile.postal_code.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Country".into(),
-            value: display_value(&profile.country.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Date of birth".into(),
-            value: display_value(&profile.birthdate.clone().unwrap_or_default()),
-        },
-        templates::ProfileViewRow {
-            label: "Created".into(),
-            value: display_value(&created),
-        },
-        templates::ProfileViewRow {
-            label: "Account enabled".into(),
-            value: if account.enabled {
-                "Yes".into()
-            } else {
-                "No".into()
-            },
-        },
-        templates::ProfileViewRow {
-            label: "Email verified".into(),
-            value: if account.email_verified {
-                "Yes".into()
-            } else {
-                "No".into()
-            },
-        },
+        profile_row("User ID", user_id.clone()),
+        profile_row("Username", username.clone()),
+        profile_row("Email", account.email.unwrap_or_default()),
+        profile_row("First name", account.first_name.unwrap_or_default()),
+        profile_row("Last name", account.last_name.unwrap_or_default()),
+        profile_row("Phone", attribute_or_default(&attributes, "phone")),
+        profile_row("Company", attribute_or_default(&attributes, "company")),
+        profile_row(
+            "Street address",
+            attribute_or_default(&attributes, "street"),
+        ),
+        profile_row("City", attribute_or_default(&attributes, "city")),
+        profile_row(
+            "State / region",
+            attribute_or_default(&attributes, "region"),
+        ),
+        profile_row(
+            "Postal code",
+            attribute_or_default(&attributes, "postalCode"),
+        ),
+        profile_row("Country", attribute_or_default(&attributes, "country")),
+        profile_row(
+            "Date of birth",
+            attribute_or_default(&attributes, "birthdate"),
+        ),
+        profile_row("Created", created),
+        profile_row("Account enabled", yes_no(enabled)),
+        profile_row("Email verified", yes_no(email_verified)),
     ];
     let html = templates::render_admin_user_html(
         &user_id,
-        profile.username.unwrap_or_default(),
-        account.enabled,
-        account.email_verified,
+        username,
+        enabled,
+        email_verified,
         notice_message(&query.notice),
         rows,
     )
@@ -432,21 +376,6 @@ pub(crate) async fn admin_user_notify(
             .into_response()
     })?;
     Ok(Redirect::to(&format!("/admin/users/{user_id}?notice=notified")).into_response())
-}
-
-fn attribute_value(
-    attributes: &Option<std::collections::HashMap<String, Vec<String>>>,
-    key: &str,
-) -> Option<String> {
-    attributes
-        .as_ref()
-        .and_then(|map| map.get(key))
-        .and_then(|values| {
-            values
-                .iter()
-                .find(|value| !value.trim().is_empty())
-                .cloned()
-        })
 }
 
 #[cfg(test)]

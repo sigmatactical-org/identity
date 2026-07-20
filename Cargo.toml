@@ -32,8 +32,8 @@ base64 = "0.22.1"
 chrono = { version = "0.4.45", default-features = false }
 cookie = { version = "0.18.1", features = ["private"] }
 dotenvy = "0.15.7"
+futures = { version = "0.3.31", default-features = false, features = ["std"] }
 http-body-util = "0.1.4"
-hyper = { version = "1.10", features = ["full"] }
 hyper-util = { version = "0.1.20", features = ["client-legacy"] }
 hyper-rustls = "0.27"
 oauth2 = "5.0.0"
@@ -63,9 +63,8 @@ tower = { version = "0.5.3", features = ["util"] }
 mimalloc = "0.1.52"
 rustls = { version = "0.23.42", features = ["ring"] }
 sigma-theme = { git = "https://github.com/sigmatactical-org/sigma-theme.git", default-features = false, features = ["askama", "axum"] }
-sigma-human-check = { git = "https://github.com/sigmatactical-org/human-check.git" }
+sigma-human-check = { git = "https://github.com/sigmatactical-org/human-check.git", features = ["axum"] }
 sigma-identity-nav = { path = "nav" }
-sigma-cart-nav = { git = "https://github.com/sigmatactical-org/cart.git" }
 
 [dev-dependencies]
 hyper = "1.10.1"

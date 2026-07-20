@@ -1,9 +1,7 @@
 mod logout_app_settings;
-mod logout_behavior;
 mod logout_callback_query_params;
 mod logout_query_params;
 pub use logout_app_settings::LogoutAppSettings;
-pub use logout_behavior::LogoutBehavior;
 pub(crate) use logout_callback_query_params::LogoutCallbackQueryParams;
 pub(crate) use logout_query_params::LogoutQueryParams;
 
@@ -28,24 +26,15 @@ use crate::session::{
 
 use super::SessionTokens;
 
-fn session_cookie_secure() -> bool {
-    !crate::config::var_optional("SESSION_SECURE_COOKIE_DISABLED")
-        .is_some_and(|v| v.eq_ignore_ascii_case("true"))
-}
-
-fn session_cookie_same_site() -> SameSiteSetting {
-    SameSiteSetting::from_env_string(crate::config::var_optional("SESSION_COOKIE_SAMESITE"))
-}
-
 fn logout_app_uri_cookie(app_uri: &str) -> Cookie<'static> {
     let mut builder = Cookie::build((LOGOUT_APP_URI_COOKIE, app_uri.to_string()))
         .http_only(true)
         .path("/auth")
         .max_age(Duration::minutes(10));
-    if session_cookie_secure() {
+    if !crate::config::session_secure_cookie_disabled() {
         builder = builder.secure(true);
     }
-    builder = builder.same_site(match session_cookie_same_site() {
+    builder = builder.same_site(match crate::config::session_cookie_same_site() {
         SameSiteSetting::None => CookieSameSite::None,
         SameSiteSetting::Lax => CookieSameSite::Lax,
         SameSiteSetting::Strict => CookieSameSite::Strict,

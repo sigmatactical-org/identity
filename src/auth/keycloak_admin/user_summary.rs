@@ -1,7 +1,5 @@
 //! [`UserSummary`].
 
-#[allow(unused_imports)]
-use super::*;
 use serde::Deserialize;
 
 /// Summary row for the admin user list (`GET /admin/realms/.../users`).

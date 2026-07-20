@@ -1,7 +1,5 @@
 //! [`ConformanceTemplate`].
 
-#[allow(unused_imports)]
-use super::*;
 use askama::Template;
 use sigma_theme::nav::SiteHeader;
 

@@ -1,8 +1,5 @@
 //! [`IntrospectionResult`].
 
-#[allow(unused_imports)]
-use super::*;
-
 /// Result of an RFC 7662 token introspection against the identity provider.
 /// `active` reflects the IdP's authoritative validity decision (signature,
 /// expiry, revocation); `realm_roles` are the Keycloak realm roles the IdP

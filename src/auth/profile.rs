@@ -1,3 +1,10 @@
+mod profile_deps;
+mod profile_form;
+mod profile_query_params;
+pub(crate) use profile_deps::ProfileDeps;
+pub(crate) use profile_form::ProfileForm;
+pub(crate) use profile_query_params::ProfileQueryParams;
+
 use axum::{
     Extension, Form,
     extract::{Query, State},
@@ -5,59 +12,14 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
 };
 use axum_macros::debug_handler;
-use serde::Deserialize;
 use tower_sessions::Session;
 use tracing::{debug, error};
 use url::Url;
 
 use crate::config;
-use crate::session::SESSION_KEY_JWT;
 use crate::templates;
 
-use super::{KeycloakAdmin, ProfileInput, RegistrationAppSettings, SessionTokens};
-
-#[derive(Clone)]
-pub(crate) struct ProfileDeps {
-    pub settings: RegistrationAppSettings,
-    pub admin: KeycloakAdmin,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ProfileQueryParams {
-    #[serde(default)]
-    return_url: String,
-    #[serde(default)]
-    edit: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ProfileForm {
-    return_url: String,
-    username: String,
-    email: String,
-    first_name: String,
-    last_name: String,
-    #[serde(default)]
-    phone: String,
-    #[serde(default)]
-    street: String,
-    #[serde(default)]
-    city: String,
-    #[serde(default)]
-    region: String,
-    #[serde(default)]
-    postal_code: String,
-    #[serde(default)]
-    country: String,
-    #[serde(default)]
-    birthdate: String,
-    #[serde(default)]
-    company: String,
-}
-
-async fn session_tokens(session: &Session) -> Option<SessionTokens> {
-    session.get(SESSION_KEY_JWT).await.ok().flatten()
-}
+use super::{KeycloakAdmin, RegistrationAppSettings, session_tokens};
 
 fn profile_url(return_url: &str, edit: bool) -> String {
     let mut url = Url::parse(&format!(
@@ -97,40 +59,6 @@ fn logout_url(return_url: &str) -> String {
     url.to_string()
 }
 
-fn fields_from_form(form: &ProfileForm) -> templates::ProfileFields {
-    templates::ProfileFields {
-        username: form.username.clone(),
-        email: form.email.clone(),
-        first_name: form.first_name.clone(),
-        last_name: form.last_name.clone(),
-        phone: form.phone.clone(),
-        street: form.street.clone(),
-        city: form.city.clone(),
-        region: form.region.clone(),
-        postal_code: form.postal_code.clone(),
-        country: form.country.clone(),
-        birthdate: form.birthdate.clone(),
-        company: form.company.clone(),
-    }
-}
-
-fn input_from_form(form: &ProfileForm) -> ProfileInput {
-    ProfileInput {
-        username: form.username.trim().to_string(),
-        email: form.email.trim().to_string(),
-        first_name: form.first_name.trim().to_string(),
-        last_name: form.last_name.trim().to_string(),
-        phone: form.phone.trim().to_string(),
-        street: form.street.trim().to_string(),
-        city: form.city.trim().to_string(),
-        region: form.region.trim().to_string(),
-        postal_code: form.postal_code.trim().to_string(),
-        country: form.country.trim().to_string(),
-        birthdate: form.birthdate.trim().to_string(),
-        company: form.company.trim().to_string(),
-    }
-}
-
 fn render_view(
     return_url: &str,
     fields: &templates::ProfileFields,
@@ -161,29 +89,7 @@ fn render_edit(
 }
 
 fn login_redirect(return_url: &str) -> Redirect {
-    let profile_url = profile_url(return_url, false);
-    let public_base = config::public_base_url();
-    let identity_base = public_base.trim_end_matches('/');
-    let callback = format!("{identity_base}/auth/callback");
-    let mut login_url =
-        Url::parse(&format!("{identity_base}/auth/login")).expect("valid login path");
-    {
-        let mut pairs = login_url.query_pairs_mut();
-        pairs.append_pair("app_uri", &profile_url);
-        pairs.append_pair("redirect_uri", &callback);
-        pairs.append_pair("scope", "openid");
-    }
-    Redirect::to(login_url.as_str())
-}
-
-fn validate_form(form: &ProfileForm) -> Option<String> {
-    if form.username.trim().is_empty() {
-        return Some("Username is required.".into());
-    }
-    if form.email.trim().is_empty() || !form.email.contains('@') {
-        return Some("A valid email address is required.".into());
-    }
-    None
+    Redirect::to(&super::login_url_for(&profile_url(return_url, false)))
 }
 
 #[debug_handler]
@@ -253,19 +159,17 @@ pub(crate) async fn profile_submit(
         return Err((StatusCode::UNAUTHORIZED, "Invalid session").into_response());
     };
 
-    if let Some(message) = validate_form(&form) {
-        let fields = fields_from_form(&form);
+    // Built once and reused by every branch below.
+    let fields = form.fields();
+
+    if let Some(message) = form.validate() {
         return render_edit(&form.return_url, &fields, Some(&message))
             .map(IntoResponse::into_response)
             .map_err(|error| *error);
     }
 
-    if let Err(error) = admin
-        .update_user_profile(&user_id, &input_from_form(&form))
-        .await
-    {
+    if let Err(error) = admin.update_user_profile(&user_id, &form.input()).await {
         error!("Failed to update profile for {user_id}: {error:?}");
-        let fields = fields_from_form(&form);
         return render_edit(
             &form.return_url,
             &fields,
@@ -279,7 +183,6 @@ pub(crate) async fn profile_submit(
         return Ok(Redirect::to(form.return_url.as_str()).into_response());
     }
 
-    let fields = fields_from_form(&form);
     render_view(&form.return_url, &fields, true)
         .map(IntoResponse::into_response)
         .map_err(|error| *error)

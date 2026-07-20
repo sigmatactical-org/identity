@@ -23,6 +23,8 @@ keycloak_theme_marker() {
 }
 
 prepare_theme_layout() {
+  # Keycloak mounts the sigma-theme checkout expected as a sibling of this
+  # repo (../theme). Clone the canonical repo there when it is missing.
   local compose_theme expected
   compose_theme="$(cd "$ROOT/.devcontainer/../.." && pwd)/theme"
   expected="$(keycloak_theme_marker "$compose_theme")"
@@ -30,11 +32,10 @@ prepare_theme_layout() {
     return 0
   fi
 
-  local repo_theme
-  repo_theme="$(keycloak_theme_marker "$ROOT/theme")"
-  if [[ -f "$repo_theme" ]]; then
-    mkdir -p "$(dirname "$compose_theme")"
-    ln -sfn "$ROOT/theme" "$compose_theme"
+  git clone --depth 1 https://github.com/sigmatactical-org/sigma-theme.git "$compose_theme"
+  if [[ ! -f "$expected" ]]; then
+    echo "sigma-theme checkout at $compose_theme is missing $expected" >&2
+    return 1
   fi
 }
 

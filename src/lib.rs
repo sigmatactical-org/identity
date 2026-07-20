@@ -3,15 +3,15 @@
 use std::env;
 
 use anyhow::Context;
-use session::{SameSiteSetting, SessionSetup};
+use session::SessionSetup;
 use tokio::signal;
 use tracing::{debug, warn};
 
 use crate::{
     auth::{
         AdminDeps, AppConfigurationState, KeycloakAdmin, LoginAppSettings, LogoutAppSettings,
-        LogoutBehavior, OIDCClient, ProfileDeps, RegistrationAdapter, RegistrationAppSettings,
-        RegistrationDeps, allowlist::UriAllowlist,
+        OIDCClient, ProfileDeps, RegistrationAdapter, RegistrationAppSettings, RegistrationDeps,
+        allowlist::UriAllowlist,
     },
     config::validate_session_secret,
     http::{ProxyConfig, app},
@@ -22,7 +22,6 @@ mod auth;
 mod config;
 mod geo;
 mod http;
-mod human_check;
 mod monitoring;
 mod session;
 mod site_nav;
@@ -54,10 +53,6 @@ async fn shutdown_signal() {
     debug!("signal received, starting graceful shutdown");
 }
 
-fn oidc_client_from_env() -> anyhow::Result<String> {
-    crate::config::var("OIDC_CLIENT_ID")
-}
-
 async fn init_oidc_client(client_id: &str) -> anyhow::Result<OIDCClient> {
     let issuer_url = crate::config::var("OIDC_ISSUER_URL")?;
     let client_secret = crate::config::var("OIDC_CLIENT_SECRET")?;
@@ -75,14 +70,12 @@ async fn init_oidc_client(client_id: &str) -> anyhow::Result<OIDCClient> {
 }
 
 fn init_session_vars() -> anyhow::Result<SessionSetup> {
-    let secure_disabled = crate::config::var_optional("SESSION_SECURE_COOKIE_DISABLED")
-        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    let secure_disabled = crate::config::session_secure_cookie_disabled();
     if secure_disabled {
         warn!("Disabling secure cookies is not recommended in production.");
     }
 
-    let same_site =
-        SameSiteSetting::from_env_string(crate::config::var_optional("SESSION_COOKIE_SAMESITE"));
+    let same_site = crate::config::session_cookie_same_site();
 
     let secret = crate::config::var("SESSION_SECRET")?;
     validate_session_secret(&secret)?;
@@ -106,7 +99,7 @@ pub async fn run() -> anyhow::Result<()> {
     let pool = postgres_pool(&database_url).await?;
     let store = session_store(pool.clone()).await?;
     let session_layer = session_setup.get_session_layer(store)?;
-    let client_id = oidc_client_from_env()?;
+    let client_id = crate::config::var("OIDC_CLIENT_ID")?;
     let oidc_client = init_oidc_client(&client_id).await?;
     if config::conformance_mode() {
         debug!("OIDC conformance mode enabled (see /conformance/ harness)");
@@ -131,28 +124,15 @@ pub async fn run() -> anyhow::Result<()> {
     let remaining_secs_threshold = crate::config::var("SESSION_REFRESH_THRESHOLD")?
         .parse::<_>()
         .context("Cannot parse SESSION_REFRESH_THRESHOLD")?;
-    let login_redirects = crate::config::var("LOGIN_REDIRECT_APP_URIS")?
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect();
-    let oidc_redirects = crate::config::var("OIDC_REDIRECT_URIS")?
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect();
-    let logout_oidc_redirects = crate::config::var("LOGOUT_OIDC_REDIRECT_URIS")?
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect();
-    let logout_app_uris = crate::config::var("LOGOUT_REDIRECT_APP_URIS")?
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect();
+    let login_redirects = crate::config::var_list("LOGIN_REDIRECT_APP_URIS")?;
+    let oidc_redirects = crate::config::var_list("OIDC_REDIRECT_URIS")?;
+    let logout_oidc_redirects = crate::config::var_list("LOGOUT_OIDC_REDIRECT_URIS")?;
+    let logout_app_uris = crate::config::var_list("LOGOUT_REDIRECT_APP_URIS")?;
     let app_config = AppConfigurationState {
         login_app_settings: LoginAppSettings::new(login_redirects, oidc_redirects),
         logout_app_settings: LogoutAppSettings {
             client_id,
             logout_uri: crate::config::var("LOGOUT_SSO_URI")?,
-            _behavior: LogoutBehavior::FrontChannelLogoutWithIdToken,
             allowed_app_uris: UriAllowlist::new(logout_app_uris),
             allowed_oidc_redirect_uris: UriAllowlist::new(logout_oidc_redirects),
         },

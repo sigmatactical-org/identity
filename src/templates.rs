@@ -116,14 +116,14 @@ pub fn render_register_html(
         site_header: section_header("Register"),
         site_nav: site_nav("/register", false)?,
         copyright_years: copyright_years(),
-        return_url: return_url.to_string(),
-        email: email.to_string(),
-        username: username.to_string(),
-        first_name: first_name.to_string(),
-        last_name: last_name.to_string(),
-        error: error.unwrap_or_default().to_string(),
+        return_url,
+        email,
+        username,
+        first_name,
+        last_name,
+        error: error.unwrap_or_default(),
         human_check_enabled: human_check.is_enabled(),
-        human_check_challenge_url: "/human-check/challenge".to_string(),
+        human_check_challenge_url: "/human-check/challenge",
     }
     .render()
 }
@@ -231,7 +231,7 @@ pub fn render_profile_html(
     let countries = crate::geo::COUNTRIES
         .iter()
         .map(|(_code, name)| CountryOption {
-            name: (*name).to_string(),
+            name,
             selected: name.eq_ignore_ascii_case(&fields.country),
         })
         .collect();
@@ -239,21 +239,21 @@ pub fn render_profile_html(
         site_header: section_header("Edit profile"),
         site_nav: site_nav("/profile", false)?,
         copyright_years: copyright_years(),
-        return_url: return_url.to_string(),
-        cancel_url: cancel_url.to_string(),
-        error: error.unwrap_or_default().to_string(),
-        username: fields.username.clone(),
-        email: fields.email.clone(),
-        first_name: fields.first_name.clone(),
-        last_name: fields.last_name.clone(),
-        phone: fields.phone.clone(),
-        street: fields.street.clone(),
-        city: fields.city.clone(),
-        postal_code: fields.postal_code.clone(),
-        birthdate: fields.birthdate.clone(),
-        company: fields.company.clone(),
+        return_url,
+        cancel_url,
+        error: error.unwrap_or_default(),
+        username: &fields.username,
+        email: &fields.email,
+        first_name: &fields.first_name,
+        last_name: &fields.last_name,
+        phone: &fields.phone,
+        street: &fields.street,
+        city: &fields.city,
+        postal_code: &fields.postal_code,
+        birthdate: &fields.birthdate,
+        company: &fields.company,
         countries,
-        region: fields.region.clone(),
+        region: &fields.region,
     }
     .render()
 }

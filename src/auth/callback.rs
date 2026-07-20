@@ -1,3 +1,8 @@
+mod callback_query_params;
+mod token_exchange_data;
+pub(crate) use callback_query_params::CallbackQueryParams;
+pub(crate) use token_exchange_data::TokenExchangeData;
+
 use axum::{
     Extension,
     extract::Query,
@@ -6,7 +11,6 @@ use axum::{
 };
 use axum_macros::debug_handler;
 use oauth2::reqwest::Url;
-use serde::Deserialize;
 use tower_sessions::Session;
 use tracing::{error, info};
 
@@ -19,21 +23,6 @@ use crate::{
 };
 
 use super::{SessionTokens, random_alphanumeric_string};
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct CallbackQueryParams {
-    pub(crate) code: Option<String>,
-    pub(crate) error: Option<String>,
-    pub(crate) state: String,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TokenExchangeData {
-    pub(crate) code: String,
-    pub(crate) nonce: String,
-    pub(crate) pkce_verifier: String,
-    pub(crate) redirect_uri: String,
-}
 
 pub(crate) async fn callback_post_token_exchange(
     session: &Session,
@@ -49,11 +38,14 @@ pub(crate) async fn callback_post_token_exchange(
     let _ = session.insert(SESSION_KEY_USERID, userid).await;
 }
 
-#[debug_handler]
-pub(crate) async fn callback(
-    Extension(oidc_client): Extension<OIDCClient>,
-    session: Session,
-    callback_query_params: Query<CallbackQueryParams>,
+/// The shared post-authorization sequence: validate state against the stored
+/// login parameters, surface an IdP error back to the app, otherwise exchange
+/// the code and establish the session. Used by both the GET callback and the
+/// `response_mode=form_post` POST callback.
+pub(crate) async fn handle_callback(
+    oidc_client: &OIDCClient,
+    session: &Session,
+    params: CallbackQueryParams,
 ) -> Result<Response, Response> {
     let login_callback_session_params = session
         .get::<LoginCallbackSessionParameters>(SESSION_KEY_LOGIN_CALLBACK)
@@ -64,33 +56,31 @@ pub(crate) async fn callback(
         })?
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid session").into_response())?;
     let _: Result<Option<()>, _> = session.remove(SESSION_KEY_LOGIN_CALLBACK).await;
-    if callback_query_params.state != login_callback_session_params.csrf_token {
+
+    if params.state != login_callback_session_params.csrf_token {
         return Err((StatusCode::BAD_REQUEST, "Invalid request").into_response());
     }
 
-    // If callback contains an error, redirect to the app with the error message.
-    if let Some(error) = &callback_query_params.error {
-        let u = Url::parse(&login_callback_session_params.app_uri).map(|u| {
-            // append error details to the redirect URI
-            let mut url = u.clone();
-            url.query_pairs_mut().append_pair("error", error.as_str());
-            url.to_string()
-        });
-        return match u {
-            Ok(app_uri) => Ok(Redirect::to(app_uri.as_str()).into_response()),
-            Err(e) => {
+    // If the callback carries an error, redirect to the app with it appended.
+    if let Some(error) = &params.error {
+        let app_uri = Url::parse(&login_callback_session_params.app_uri)
+            .map(|mut url| {
+                url.query_pairs_mut().append_pair("error", error.as_str());
+                url.to_string()
+            })
+            .map_err(|e| {
                 error!(
                     "Failed to parse redirect URI: {} {:?}",
                     &login_callback_session_params.app_uri, e
                 );
-                Err((StatusCode::BAD_REQUEST, "Invalid app_uri").into_response())
-            }
-        };
+                (StatusCode::BAD_REQUEST, "Invalid app_uri").into_response()
+            })?;
+        return Ok(Redirect::to(&app_uri).into_response());
     }
 
     let (jwt, userid) = oidc_client
         .exchange_code(TokenExchangeData {
-            code: callback_query_params.code.clone().unwrap_or_default(),
+            code: params.code.unwrap_or_default(),
             nonce: login_callback_session_params.nonce,
             pkce_verifier: login_callback_session_params.pkce_verifier,
             redirect_uri: login_callback_session_params.redirect_uri.clone(),
@@ -101,9 +91,18 @@ pub(crate) async fn callback(
             (StatusCode::UNAUTHORIZED, "Login failure").into_response()
         })?;
 
-    callback_post_token_exchange(&session, jwt, userid).await;
+    callback_post_token_exchange(session, jwt, userid).await;
 
     Ok(Redirect::to(&login_callback_session_params.app_uri).into_response())
+}
+
+#[debug_handler]
+pub(crate) async fn callback(
+    Extension(oidc_client): Extension<OIDCClient>,
+    session: Session,
+    Query(params): Query<CallbackQueryParams>,
+) -> Result<Response, Response> {
+    handle_callback(&oidc_client, &session, params).await
 }
 
 #[cfg(test)]

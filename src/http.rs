@@ -1,10 +1,16 @@
+mod app_build_options;
+mod extra_proxy_route;
+mod proxy_config;
+pub(crate) use app_build_options::AppBuildOptions;
+pub(crate) use extra_proxy_route::ExtraProxyRoute;
+pub(crate) use proxy_config::ProxyConfig;
+
 use std::{
     net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use axum::{
     Extension, Router,
     body::Body,
@@ -31,8 +37,8 @@ use tracing::{debug, error, warn};
 
 use crate::{
     auth::{
-        AdminDeps, AppConfigurationState, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens,
-        auth_routes, is_admin, register_routes,
+        AdminDeps, OIDCClient, ProfileDeps, RegistrationDeps, SessionTokens, auth_routes, is_admin,
+        register_routes,
     },
     config,
     monitoring::health_routes,
@@ -52,62 +58,6 @@ pub(crate) type ProxyClient = hyper_util::client::legacy::Client<
     HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
     Body,
 >;
-
-#[derive(Debug, Clone)]
-pub(crate) struct ExtraProxyRoute {
-    path: String,
-    target: String,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ProxyConfig {
-    base_url: String,
-    cookie_name: String,
-    extra_routes: Vec<ExtraProxyRoute>,
-}
-
-impl ProxyConfig {
-    fn rewrite_uri(&self, uri: &str) -> String {
-        self.extra_routes
-            .iter()
-            .find_map(|x| {
-                if uri.starts_with(x.path.as_str()) {
-                    let path = &uri[x.path.len()..];
-                    Some(format!("{}{}", x.target.as_str(), path))
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(format!("{}{}", self.base_url, uri))
-    }
-
-    /// Initialize tracing/metrics once per process.
-    pub(crate) fn try_init(
-        base_url: String,
-        cookie_name: &str,
-        extra_routes: Vec<String>,
-    ) -> Result<Self> {
-        let uri = Uri::from_str(base_url.as_str())?;
-        if uri.host().is_none() {
-            return Err(anyhow!("Missing host"));
-        }
-        let mut extra_routes: Vec<ExtraProxyRoute> = extra_routes
-            .into_iter()
-            .filter_map(|s| {
-                s.split_once("=>").map(|(path, target)| ExtraProxyRoute {
-                    path: path.to_string(),
-                    target: target.to_string(),
-                })
-            })
-            .collect();
-        extra_routes.sort_by_key(|b| std::cmp::Reverse(b.path.len()));
-        Ok(Self {
-            base_url,
-            cookie_name: cookie_name.to_string(),
-            extra_routes,
-        })
-    }
-}
 
 pub(crate) async fn port_listener() -> Result<tokio::net::TcpListener> {
     let port_str = config::listen_port();
@@ -330,7 +280,8 @@ async fn proxy(
     mut req: axum::extract::Request,
 ) -> Result<Response, Response> {
     let session_jwt: Option<SessionTokens> = session.get(SESSION_KEY_JWT).await.unwrap_or(None);
-    let bearer = bearer_access_token(req.headers().get(AUTHORIZATION));
+    // Copied out so the header borrow ends before the request is rewritten below.
+    let bearer = bearer_access_token(req.headers().get(AUTHORIZATION)).map(str::to_string);
     let path = req.uri().path();
 
     let access_token = if let Some(ref tokens) = session_jwt {
@@ -457,17 +408,13 @@ async fn proxy(
         .into_response())
 }
 
-fn bearer_access_token(header: Option<&HeaderValue>) -> Option<String> {
+fn bearer_access_token(header: Option<&HeaderValue>) -> Option<&str> {
     let raw = header?.to_str().ok()?.trim();
     let token = raw
         .strip_prefix("Bearer ")
         .or_else(|| raw.strip_prefix("bearer "))?
         .trim();
-    if token.is_empty() {
-        None
-    } else {
-        Some(token.to_string())
-    }
+    (!token.is_empty()).then_some(token)
 }
 
 // `Response` is ~128 bytes; boxing it here would ripple `?`-based error
@@ -505,65 +452,18 @@ fn proxy_path_requires_admin(path: &str) -> bool {
         || path.starts_with("v1/packages")
 }
 
+/// Apply the shared theme security header set plus identity's cache policy.
 fn security_headers(router: Router) -> Router {
-    let csp = if config::is_production() {
-        sigma_theme::public_html_csp_production("", false)
-    } else {
-        sigma_theme::public_html_csp("", false)
-    };
-
-    let mut router = router
-        .layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("x-content-type-options"),
-            HeaderValue::from_static("nosniff"),
-        ))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("x-frame-options"),
-            HeaderValue::from_static("DENY"),
-        ))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("referrer-policy"),
-            HeaderValue::from_static("strict-origin-when-cross-origin"),
-        ))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("content-security-policy"),
-            HeaderValue::from_str(&csp).expect("valid csp"),
-        ))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),
-            HeaderValue::from_static("same-origin"),
-        ))
-        .layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("permissions-policy"),
-            HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
-        ))
-        // Pages render session-dependent content (nav welcome state, signed-in
-        // vs anonymous body content, admin data). Without this, the browser
-        // can restore a stale render from bfcache/disk cache on back/forward
-        // navigation after sign-in or sign-out. Static assets already set
-        // their own Cache-Control, so if_not_present leaves those untouched.
-        .layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::CACHE_CONTROL,
-            HeaderValue::from_static("no-store"),
-        ));
-
-    if config::is_production() {
-        router = router.layer(SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("strict-transport-security"),
-            HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
-        ));
-    }
-
-    router
-}
-
-/// Toggles for optional route groups when building the app.
-pub(crate) struct AppBuildOptions {
-    pub remaining_secs_threshold: u64,
-    pub app_config: AppConfigurationState,
-    pub registration: Option<RegistrationDeps>,
-    pub profile: Option<ProfileDeps>,
-    pub admin: Option<AdminDeps>,
+    // Pages render session-dependent content (nav welcome state, signed-in vs
+    // anonymous body content, admin data). Without this, the browser can
+    // restore a stale render from bfcache/disk cache on back/forward navigation
+    // after sign-in or sign-out. Static assets already set their own
+    // Cache-Control, so if_not_present leaves those untouched.
+    let router = router.layer(SetResponseHeaderLayer::if_not_present(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    ));
+    sigma_theme::axum::security_headers(router, "")
 }
 
 /// Assemble the full axum app from settings + stores.
@@ -674,22 +574,13 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
 mod proxy_auth_tests {
     use super::{bearer_access_token, ensure_proxy_admin_access, proxy_path_requires_admin};
     use axum::http::{HeaderValue, StatusCode};
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-    fn fake_jwt(payload: &str) -> String {
-        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
-        let body = URL_SAFE_NO_PAD.encode(payload.as_bytes());
-        format!("{header}.{body}.")
-    }
+    use crate::auth::fake_jwt;
 
     #[test]
     fn bearer_access_token_parses_header() {
         let value = HeaderValue::from_static("Bearer abc.def.ghi");
-        assert_eq!(
-            bearer_access_token(Some(&value)).as_deref(),
-            Some("abc.def.ghi")
-        );
+        assert_eq!(bearer_access_token(Some(&value)), Some("abc.def.ghi"));
         assert!(bearer_access_token(None).is_none());
         assert!(bearer_access_token(Some(&HeaderValue::from_static("Basic x"))).is_none());
     }

@@ -2,18 +2,15 @@
 
 use std::time::{Duration, Instant};
 
+mod conformance_client;
+pub use conformance_client::ConformanceClient;
+
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
 use serde_json::Value;
 use tracing::{debug, info};
 
 pub const PASSING_RESULTS: &[&str] = &["PASSED", "WARNING", "REVIEW", "SKIPPED"];
-
-pub struct ConformanceClient {
-    client: Client,
-    server: String,
-    host_header: Option<String>,
-}
 
 impl ConformanceClient {
     pub fn new(server: &str) -> Result<Self> {
@@ -144,12 +141,12 @@ impl ConformanceClient {
     }
 
     async fn get_json(&self, path: &str) -> Result<Value> {
-        let body = self.get_bytes(path, None).await?;
+        let body = self.get_bytes(path).await?;
         Ok(serde_json::from_slice(&body)?)
     }
 
     async fn get_raw(&self, path: &str) -> Result<u16> {
-        let url = self.build_url(path, None);
+        let url = self.build_url(path);
         let mut request = self.client.get(&url);
         if let Some(host) = &self.host_header {
             request = request.header("Host", host);
@@ -158,8 +155,8 @@ impl ConformanceClient {
         Ok(response.status().as_u16())
     }
 
-    async fn get_bytes(&self, path: &str, params: Option<&[(&str, &str)]>) -> Result<Vec<u8>> {
-        let url = self.build_url(path, params);
+    async fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
+        let url = self.build_url(path);
         let mut request = self.client.get(&url);
         if let Some(host) = &self.host_header {
             request = request.header("Host", host);
@@ -217,23 +214,13 @@ impl ConformanceClient {
         Ok(serde_json::from_slice(&bytes)?)
     }
 
-    fn build_url(&self, path: &str, params: Option<&[(&str, &str)]>) -> String {
+    fn build_url(&self, path: &str) -> String {
         let base = if self.server.contains("127.0.0.1") {
-            "https://127.0.0.1:8443".to_string()
+            "https://127.0.0.1:8443"
         } else {
-            self.server.clone()
+            self.server.as_str()
         };
-        let mut url = format!("{base}{path}");
-        if let Some(params) = params {
-            let query = params
-                .iter()
-                .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
-                .collect::<Vec<_>>()
-                .join("&");
-            url.push('?');
-            url.push_str(&query);
-        }
-        url
+        format!("{base}{path}")
     }
 }
 

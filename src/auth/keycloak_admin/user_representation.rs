@@ -1,7 +1,5 @@
 //! [`UserRepresentation`].
 
-#[allow(unused_imports)]
-use super::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 

@@ -1,8 +1,5 @@
 //! [`AdminServiceAccountRow`].
 
-#[allow(unused_imports)]
-use super::*;
-
 /// A client's service-account user, for the admin "Service accounts" table.
 pub(crate) struct AdminServiceAccountRow {
     pub id: String,

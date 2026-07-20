@@ -1,8 +1,5 @@
 //! [`AuthorizeRequestData`].
 
-#[allow(unused_imports)]
-use super::*;
-
 /// Parameters carried through the authorization-code flow.
 pub struct AuthorizeRequestData {
     pub redirect_uri: String,

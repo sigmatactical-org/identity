@@ -3,11 +3,11 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use regex::Regex;
 use tokio::process::Command;
 use tracing::info;
 
 use crate::config::env_run_path;
+use crate::env::{env_f64, form_regex};
 
 pub const DEFAULT_IDENTITY_URL: &str = "https://localhost:3000/app/up";
 pub const DEFAULT_LOGIN_APP_URI: &str = "https://localhost:3000/app/up";
@@ -99,14 +99,12 @@ fn conformance_form_post_enabled() -> bool {
 }
 
 async fn submit_form_post_callback(html: &str, cookie_jar: &str) -> Result<()> {
-    let action_re = Regex::new(r#"action="([^"]+)""#).unwrap();
-    let field_re = Regex::new(r#"name="([^"]+)"\s+value="([^"]+)""#).unwrap();
-    let action = action_re
+    let action = form_regex::ACTION
         .captures(html)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str())
         .context("form_post authorization response missing form action")?;
-    let fields: Vec<(String, String)> = field_re
+    let fields: Vec<(String, String)> = form_regex::FIELD
         .captures_iter(html)
         .map(|caps| (caps[1].to_string(), caps[2].to_string()))
         .collect();
@@ -196,16 +194,14 @@ pub async fn trigger_refresh_flow(cookie_jar: &str) -> Result<()> {
 }
 
 async fn submit_logout_confirmation(html: &str, cookie_jar: &str) -> Result<()> {
-    let action_re = Regex::new(r#"action="([^"]+)""#).unwrap();
-    let field_re = Regex::new(r#"name="([^"]+)"\s+value="([^"]+)""#).unwrap();
-    let Some(action) = action_re
+    let Some(action) = form_regex::ACTION
         .captures(html)
         .and_then(|caps| caps.get(1))
         .map(|m| m.as_str())
     else {
         return Ok(());
     };
-    let fields: Vec<(String, String)> = field_re
+    let fields: Vec<(String, String)> = form_regex::FIELD
         .captures_iter(html)
         .map(|caps| (caps[1].to_string(), caps[2].to_string()))
         .collect();
@@ -295,11 +291,4 @@ async fn run_curl_cookie_jar(args: &[&str]) -> Result<String> {
 
 fn identity_origin() -> String {
     std::env::var("CONFORMANCE_IDENTITY_ORIGIN").unwrap_or_else(|_| "https://localhost:3000".into())
-}
-
-fn env_f64(name: &str, default: f64) -> f64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
 }

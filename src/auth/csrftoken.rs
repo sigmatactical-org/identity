@@ -1,14 +1,11 @@
+mod csrf_token_response;
+pub(crate) use csrf_token_response::CsrfTokenResponse;
+
 use axum::Json;
 use axum_macros::debug_handler;
-use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 
 use crate::session::SESSION_KEY_CSRF_TOKEN;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct CsrfTokenResponse {
-    token: String,
-}
 
 #[debug_handler]
 pub(crate) async fn csrftoken(session: Session) -> Json<CsrfTokenResponse> {

@@ -1,7 +1,7 @@
 //! [`CreateUserPayload`].
 
-#[allow(unused_imports)]
-use super::*;
+use super::PasswordCredential;
+
 use serde::Serialize;
 use std::collections::HashMap;
 

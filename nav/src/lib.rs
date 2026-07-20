@@ -10,19 +10,13 @@
 
 #![forbid(unsafe_code)]
 
-use askama::Template;
+mod auth_links;
+mod auth_nav_template;
+pub use auth_links::AuthLinks;
+pub(crate) use auth_nav_template::AuthNavTemplate;
 
-/// Resolved identity URLs for a service's navbar.
-pub struct AuthLinks {
-    /// Identity login URL that returns the user to the calling app.
-    pub sign_in_url: String,
-    /// Identity profile page URL for the signed-in user.
-    pub profile_url: String,
-    /// Identity registration page URL that returns the user to the calling app.
-    pub register_url: String,
-    /// Identity service public base URL (trailing slash), used by the widget JS.
-    pub identity_base_url: String,
-}
+use askama::Template;
+use urlencoding::encode as percent_encode;
 
 /// Build the identity URLs that return the user to `return_path` on the calling
 /// app.
@@ -58,14 +52,6 @@ pub fn auth_links(identity_base: &str, app_base: &str, return_path: &str) -> Aut
     }
 }
 
-#[derive(Template)]
-#[template(path = "auth_nav.html")]
-struct AuthNavTemplate<'a> {
-    sign_in_url: &'a str,
-    identity_base_url: &'a str,
-    profile_url: &'a str,
-}
-
 /// Render the sign-in / "Welcome" navbar widget HTML for embedding in a page.
 ///
 /// # Errors
@@ -87,37 +73,6 @@ fn join_url(base: &str, path: &str) -> String {
     }
     let path = path.trim_start_matches('/');
     format!("{base}/{path}")
-}
-
-fn percent_encode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            b'/' => out.push_str("%2F"),
-            b':' => out.push_str("%3A"),
-            b'?' => out.push_str("%3F"),
-            b'#' => out.push_str("%23"),
-            b'[' => out.push_str("%5B"),
-            b']' => out.push_str("%5D"),
-            b'@' => out.push_str("%40"),
-            b'!' => out.push_str("%21"),
-            b'$' => out.push_str("%24"),
-            b'&' => out.push_str("%26"),
-            b'\'' => out.push_str("%27"),
-            b'(' => out.push_str("%28"),
-            b')' => out.push_str("%29"),
-            b'*' => out.push_str("%2A"),
-            b'+' => out.push_str("%2B"),
-            b',' => out.push_str("%2C"),
-            b';' => out.push_str("%3B"),
-            b'=' => out.push_str("%3D"),
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

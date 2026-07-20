@@ -1,46 +1,45 @@
 mod admin;
 pub mod allowlist;
+mod app_configuration_state;
+mod authorize_data;
 mod callback;
 mod conformance;
 mod csrftoken;
 mod keycloak_admin;
 mod login;
+mod login_callback_session_parameters;
 mod logout;
 mod oidcclient;
 mod profile;
 mod refresh;
 mod register;
 mod registration_adapter;
+mod session_tokens;
 mod status;
-
-use std::time::SystemTime;
 
 pub use login::LoginAppSettings;
 pub use logout::LogoutAppSettings;
-pub use logout::LogoutBehavior;
 pub use oidcclient::OIDCClient;
 pub(crate) use profile::ProfileDeps;
 pub use register::{RegistrationAppSettings, RegistrationDeps};
 pub(crate) use registration_adapter::RegistrationAdapter;
 
 pub(crate) use admin::{AdminDeps, is_admin};
+pub(crate) use app_configuration_state::AppConfigurationState;
+pub(crate) use authorize_data::AuthorizeData;
 pub(crate) use keycloak_admin::{KeycloakAdmin, ProfileInput};
+pub(crate) use login_callback_session_parameters::LoginCallbackSessionParameters;
+pub(crate) use session_tokens::{SessionTokens, session_tokens};
 
 use axum::http::Method;
 use axum::{
     Extension, Router,
-    extract::FromRef,
     routing::{get, post},
 };
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use tower_sessions::{SessionManagerLayer, SessionStore, service::PrivateCookie};
-
-use openidconnect::{
-    AccessToken, CsrfToken, Nonce, PkceCodeVerifier, RefreshToken, core::CoreIdToken, url::Url,
-};
-use serde::{Deserialize, Serialize};
 
 use self::{
     admin::{
@@ -57,114 +56,10 @@ use self::{
     status::status,
 };
 
-#[derive(Debug, Clone)]
-pub(crate) struct AuthorizeData {
-    auth_url: String,
-    csrf_token: String,
-    nonce: String,
-    pkce_verifier: String,
-}
-
-impl AuthorizeData {
-    /// Bundle the parameters of one in-flight authorization request.
-    pub(crate) fn new(
-        auth_url: Url,
-        csrf_token: CsrfToken,
-        nonce: Nonce,
-        pkce_verifier: PkceCodeVerifier,
-    ) -> Self {
-        Self {
-            auth_url: auth_url.to_string(),
-            csrf_token: csrf_token.secret().clone(),
-            nonce: nonce.secret().clone(),
-            pkce_verifier: pkce_verifier.secret().to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct SessionTokens {
-    access_token: String,
-    refresh_token: Option<String>,
-    id_token: String,
-    expires_at: SystemTime,
-    refresh_expires_at: SystemTime,
-}
-
-impl SessionTokens {
-    /// Token set as stored in the session.
-    pub(crate) fn new(
-        access_token: &AccessToken,
-        refresh_token: Option<&RefreshToken>,
-        id_token: &CoreIdToken,
-        expires_at: SystemTime,
-        refresh_expires_at: SystemTime,
-    ) -> Self {
-        Self {
-            access_token: access_token.secret().to_string(),
-            refresh_token: refresh_token.map(|r| r.secret().to_string()),
-            id_token: id_token.to_string(),
-            expires_at,
-            refresh_expires_at,
-            // expires_at: now + Duration::from_secs(expires_in as u64),
-            // refresh_expires_at: now + Duration::from_secs(refresh_expires_in as u64),
-        }
-    }
-
-    /// The bearer access token.
-    pub(crate) fn access_token(&self) -> &str {
-        &self.access_token
-    }
-
-    /// The refresh token, if the IdP issued one.
-    pub(crate) fn refresh_token(&self) -> Option<String> {
-        self.refresh_token.as_ref().cloned()
-    }
-
-    /// Whether the access token lives longer than `threshold` seconds.
-    pub(crate) fn ttl_gt(&self, threshold: u64) -> bool {
-        let now = SystemTime::now();
-        self.expires_at
-            .duration_since(now)
-            .map(|st| st.as_secs())
-            .unwrap_or_default()
-            > threshold
-    }
-
-    /// Display name from the stored ID token (preferred_username, name, or email).
-    pub(crate) fn display_name(&self) -> Option<String> {
-        display_name_from_id_token(&self.id_token)
-    }
-
-    /// Email from the stored ID token.
-    pub(crate) fn email(&self) -> Option<String> {
-        email_from_id_token(&self.id_token)
-    }
-
-    /// Subject (`sub`) from the stored ID token.
-    pub(crate) fn subject(&self) -> Option<String> {
-        jwt_claims(&self.id_token)?
-            .get("sub")
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    }
-
-    /// Whether the stored tokens include any of the given realm roles.
-    ///
-    /// Keycloak's default `roles` client scope puts `realm_access` on the access
-    /// token, not the ID token, so both are checked.
-    pub(crate) fn has_any_realm_role(&self, roles: &[&str]) -> bool {
-        token_has_any_realm_role(&self.access_token, roles)
-            || token_has_any_realm_role(&self.id_token, roles)
-    }
-}
-
 /// Whether a JWT access/id token payload includes any of the given realm roles.
 #[must_use]
 pub(crate) fn token_has_any_realm_role(token: &str, roles: &[&str]) -> bool {
-    let Some(claims) = jwt_claims(token) else {
+    let Some(claims) = jwt_payload(token) else {
         return false;
     };
     let Some(role_values) = claims
@@ -179,7 +74,11 @@ pub(crate) fn token_has_any_realm_role(token: &str, roles: &[&str]) -> bool {
         .any(|value| value.as_str().is_some_and(|role| roles.contains(&role)))
 }
 
-fn jwt_claims(token: &str) -> Option<serde_json::Value> {
+/// Decode a JWT payload (second segment) without verifying the signature.
+///
+/// JWT segments are base64url without padding, so this is the single decoder
+/// for every unverified claims peek in the crate.
+pub(crate) fn jwt_payload(token: &str) -> Option<serde_json::Value> {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
@@ -188,18 +87,20 @@ fn jwt_claims(token: &str) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
+/// Unverified JWT with the given payload JSON, for tests that only decode claims.
 #[cfg(test)]
-mod realm_role_tests {
+pub(crate) fn fake_jwt(payload: &str) -> String {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-    use super::token_has_any_realm_role;
+    let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
+    let body = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+    format!("{header}.{body}.")
+}
 
-    fn fake_jwt(payload: &str) -> String {
-        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
-        let body = URL_SAFE_NO_PAD.encode(payload.as_bytes());
-        format!("{header}.{body}.")
-    }
+#[cfg(test)]
+mod realm_role_tests {
+    use super::{fake_jwt, token_has_any_realm_role};
 
     #[test]
     fn realm_roles_are_read_from_access_token_payload() {
@@ -210,7 +111,7 @@ mod realm_role_tests {
 }
 
 fn display_name_from_id_token(id_token: &str) -> Option<String> {
-    let claims = jwt_claims(id_token)?;
+    let claims = jwt_payload(id_token)?;
     if let Some(username) = claims
         .get("preferred_username")
         .and_then(|v| v.as_str())
@@ -243,7 +144,7 @@ fn display_name_from_id_token(id_token: &str) -> Option<String> {
 }
 
 fn email_from_id_token(id_token: &str) -> Option<String> {
-    jwt_claims(id_token)?
+    jwt_payload(id_token)?
         .get("email")
         .and_then(|v| v.as_str())
         .map(str::trim)
@@ -251,32 +152,20 @@ fn email_from_id_token(id_token: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct LoginCallbackSessionParameters {
-    app_uri: String,
-    nonce: String,
-    csrf_token: String,
-    pkce_verifier: String,
-    redirect_uri: String,
-    scopes: String,
-}
-
-#[derive(Clone)]
-pub(crate) struct AppConfigurationState {
-    pub(crate) login_app_settings: LoginAppSettings,
-    pub(crate) logout_app_settings: LogoutAppSettings,
-}
-
-impl FromRef<AppConfigurationState> for LoginAppSettings {
-    fn from_ref(app_state: &AppConfigurationState) -> Self {
-        app_state.login_app_settings.clone()
+/// Identity login URL that lands the browser back on `app_uri` after sign-in.
+pub(crate) fn login_url_for(app_uri: &str) -> String {
+    let public_base = crate::config::public_base_url();
+    let identity_base = public_base.trim_end_matches('/');
+    let callback = format!("{identity_base}/auth/callback");
+    let mut login_url = openidconnect::url::Url::parse(&format!("{identity_base}/auth/login"))
+        .expect("valid login path");
+    {
+        let mut pairs = login_url.query_pairs_mut();
+        pairs.append_pair("app_uri", app_uri);
+        pairs.append_pair("redirect_uri", &callback);
+        pairs.append_pair("scope", "openid");
     }
-}
-
-impl FromRef<AppConfigurationState> for LogoutAppSettings {
-    fn from_ref(app_state: &AppConfigurationState) -> LogoutAppSettings {
-        app_state.logout_app_settings.clone()
-    }
+    login_url.into()
 }
 
 /// Build the auth route group.
@@ -351,7 +240,7 @@ pub(crate) fn register_routes<S: SessionStore + Clone + 'static>(
     Router::new()
         .route(
             "/human-check/challenge",
-            get(crate::human_check::challenge).layer(Extension(human_check.clone())),
+            get(sigma_human_check::axum::challenge).layer(Extension(human_check.clone())),
         )
         .route(
             "/register",
@@ -477,13 +366,12 @@ mod tests {
 
     use tower_sessions_sqlx_store::PostgresStore;
 
-    use crate::session::{SessionSetup, postgres_pool, session_store};
+    use crate::session::{SameSiteSetting, SessionSetup, postgres_pool, session_store};
 
     use super::allowlist::UriAllowlist;
     use super::{
         AppConfigurationState, LoginAppSettings, OIDCClient, auth_routes,
-        logout::{LogoutAppSettings, LogoutBehavior},
-        random_alphanumeric_string,
+        logout::LogoutAppSettings, random_alphanumeric_string,
     };
 
     static GLOBAL_LOGGER_SETUP: Lazy<Arc<bool>> = Lazy::new(|| {
@@ -508,52 +396,32 @@ mod tests {
         TEST_RSA_PEM
     }
 
+    // The mock-OP fixtures below are adapted from the openidconnect crate's
+    // provider example; see that crate's documentation for the rationale
+    // behind the metadata and claim choices.
     fn oidc_body(issuer: &str) -> String {
         let provider_metadata = CoreProviderMetadata::new(
-            // Parameters required by the OpenID Connect Discovery spec.
             IssuerUrl::new(issuer.to_string()).expect("Invalid issuer URL"),
             AuthUrl::new(format!("{issuer}/authorize")).expect("Auth URL is invalid"),
-            // Use the JsonWebKeySet struct to serve the JWK Set at this URL.
             JsonWebKeySetUrl::new(format!("{issuer}/.well-known/jwks.json"))
                 .expect("JWK Set URL is invalid"),
-            // Supported response types (flows).
-            vec![
-                // Recommended: support the code flow.
-                ResponseTypes::new(vec![CoreResponseType::Code]),
-                // Optional: support the implicit flow.
-                //ResponseTypes::new(vec![CoreResponseType::Token, CoreResponseType::IdToken]), // Other flows including hybrid flows may also be specified here.
-            ],
-            // For user privacy, the Pairwise subject identifier type is preferred. This prevents
-            // distinct relying parties (clients) from knowing whether their users represent the same
-            // real identities. This identifier type is only useful for relying parties that don't
-            // receive the 'email', 'profile' or other personally-identifying scopes.
-            // The Public subject identifier type is also supported.
+            vec![ResponseTypes::new(vec![CoreResponseType::Code])],
             vec![CoreSubjectIdentifierType::Pairwise],
-            // Support the RS256 signature algorithm.
             vec![CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256],
-            // OpenID Connect Providers may supply custom metadata by providing a struct that
-            // implements the AdditionalProviderMetadata trait. This requires manually using the
-            // generic ProviderMetadata struct rather than the CoreProviderMetadata type alias,
-            // however.
             EmptyAdditionalProviderMetadata {},
         )
-        // Specify the token endpoint (required for the code flow).
         .set_token_endpoint(Some(
             TokenUrl::new(format!("{issuer}/token")).expect("Invalid token URL"),
         ))
-        // Recommended: support the UserInfo endpoint.
         .set_userinfo_endpoint(Some(
             UserInfoUrl::new(format!("{issuer}/userinfo")).expect("userinfo endpoint is invalid"),
         ))
-        // Recommended: specify the supported scopes.
         .set_scopes_supported(Some(vec![
             Scope::new("openid".to_string()),
             Scope::new("email".to_string()),
             Scope::new("profile".to_string()),
         ]))
-        // Recommended: specify the supported ID token claims.
         .set_claims_supported(Some(vec![
-            // Providers may also define an enum instead of using CoreClaimName.
             CoreClaimName::new("sub".to_string()),
             CoreClaimName::new("aud".to_string()),
             CoreClaimName::new("email".to_string()),
@@ -574,9 +442,6 @@ mod tests {
     fn oidc_keys() -> String {
         let rsa_pem = test_rsa_pem();
         let jwks = CoreJsonWebKeySet::new(vec![
-            // RSA keys may also be constructed directly using CoreJsonWebKey::new_rsa(). Providers
-            // aiming to support other key types may provide their own implementation of the
-            // JsonWebKey trait or submit a PR to add the desired support to this crate.
             CoreRsaPrivateSigningKey::from_pem(
                 rsa_pem,
                 Some(JsonWebKeyId::new("key1".to_string())),
@@ -602,55 +467,26 @@ mod tests {
         let rsa_pem = test_rsa_pem();
         CoreIdToken::new(
             CoreIdTokenClaims::new(
-                // Specify the issuer URL for the OpenID Connect Provider.
                 IssuerUrl::new(issuer.to_string()).expect("Invalid issuer URL"),
-                // The audience is usually a single entry with the client ID of the client for whom
-                // the ID token is intended. This is a required claim.
                 vec![Audience::new(client_id.to_string())],
-                // The ID token expiration is usually much shorter than that of the access or refresh
-                // tokens issued to clients.
                 Utc::now() + chrono::Duration::seconds(300),
-                // The issue time is usually the current time.
                 Utc::now(),
-                // Set the standard claims defined by the OpenID Connect Core spec.
-                StandardClaims::new(
-                    // Stable subject identifiers are recommended in place of e-mail addresses or other
-                    // potentially unstable identifiers. This is the only required claim.
-                    SubjectIdentifier::new("5f83e0ca-2b8e-4e8c-ba0a-f80fe9bc3632".to_string()),
-                )
-                // Optional: specify the user's e-mail address. This should only be provided if the
-                // client has been granted the 'profile' or 'email' scopes.
+                StandardClaims::new(SubjectIdentifier::new(
+                    "5f83e0ca-2b8e-4e8c-ba0a-f80fe9bc3632".to_string(),
+                ))
                 .set_email(Some(EndUserEmail::new("bob@example.com".to_string())))
                 .set_preferred_username(Some(EndUserUsername::new("bob".to_string())))
-                // Optional: specify whether the provider has verified the user's e-mail address.
                 .set_email_verified(Some(true)),
-                // OpenID Connect Providers may supply custom claims by providing a struct that
-                // implements the AdditionalClaims trait. This requires manually using the
-                // generic IdTokenClaims struct rather than the CoreIdTokenClaims type alias,
-                // however.
                 EmptyAdditionalClaims {},
             )
             .set_nonce(Some(Nonce::new(nonce.to_string()))),
-            // The private key used for signing the ID token. For confidential clients (those able
-            // to maintain a client secret), a CoreHmacKey can also be used, in conjunction
-            // with one of the CoreJwsSigningAlgorithm::HmacSha* signing algorithms. When using an
-            // HMAC-based signing algorithm, the UTF-8 representation of the client secret should
-            // be used as the HMAC key.
             &CoreRsaPrivateSigningKey::from_pem(
                 rsa_pem,
                 Some(JsonWebKeyId::new("key1".to_string())),
             )
             .expect("Invalid RSA private key"),
-            // Uses the RS256 signature algorithm. This crate supports any RS*, PS*, or HS*
-            // signature algorithm.
             CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256,
-            // When returning the ID token alongside an access token (e.g., in the Authorization Code
-            // flow), it is recommended to pass the access token here to set the `at_hash` claim
-            // automatically.
             Some(access_token),
-            // When returning the ID token alongside an authorization code (e.g., in the implicit
-            // flow), it is recommended to pass the authorization code here to set the `c_hash` claim
-            // automatically.
             None,
         )
         .expect("Invalid ID token")
@@ -670,7 +506,7 @@ mod tests {
         let exp = Utc::now() + chrono::Duration::seconds(600);
         let exp_timestamp = exp.timestamp();
         let refresh_token = json!({"exp": exp_timestamp}).to_string();
-        let refresh_token = format!("A.{}.S", BASE64_STANDARD.encode(refresh_token));
+        let refresh_token = format!("A.{}.S", BASE64_URL_SAFE_NO_PAD.encode(refresh_token));
         let refresh_token = RefreshToken::new(refresh_token);
         let d = core::time::Duration::from_secs(13);
         token_response.set_expires_in(Some(&d));
@@ -739,7 +575,7 @@ mod tests {
                 cookie_domain: None,
                 ttl: Some(time::Duration::new(300, 0)),
                 secure_cookie: true,
-                same_site: crate::SameSiteSetting::Strict,
+                same_site: SameSiteSetting::Strict,
             };
             let session_layer = session_setup
                 .get_session_layer(session_store.clone())
@@ -768,7 +604,6 @@ mod tests {
                 logout_app_settings: LogoutAppSettings {
                     client_id: self.client_id.clone(),
                     logout_uri: format!("{}/logout", self.mock_server.uri()),
-                    _behavior: LogoutBehavior::FrontChannelLogoutWithIdToken,
                     allowed_app_uris: UriAllowlist::new(vec![
                         "http://logout.example.com".to_string(),
                         "http://example.org/it/index".to_string(),

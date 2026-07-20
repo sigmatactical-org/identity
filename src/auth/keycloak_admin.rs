@@ -29,7 +29,14 @@ use crate::config;
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 use url::Url;
+
+/// Re-acquire the admin token this long before it actually expires, so a call
+/// never races the expiry it just checked.
+const TOKEN_EXPIRY_MARGIN: Duration = Duration::from_secs(30);
 
 // Keycloak custom user-profile attribute keys. These must also be declared in
 // the realm's user-profile config (see dev_realm.json) or Keycloak rejects
@@ -44,7 +51,10 @@ const ATTR_BIRTHDATE: &str = "birthdate";
 const ATTR_COMPANY: &str = "company";
 
 /// First non-empty value for a Keycloak user attribute.
-fn attribute_value(attributes: &Option<HashMap<String, Vec<String>>>, key: &str) -> Option<String> {
+pub(crate) fn attribute_value(
+    attributes: &Option<HashMap<String, Vec<String>>>,
+    key: &str,
+) -> Option<String> {
     attributes
         .as_ref()
         .and_then(|map| map.get(key))
@@ -75,6 +85,10 @@ fn user_id_from_location(location: &str) -> Result<String> {
     Ok(user_id.to_string())
 }
 
+/// Split a Keycloak issuer URL into `(server_base, realm)`.
+///
+/// `sigma_pg::clients::identity` has the same logic, but its `parse_issuer` and
+/// `IssuerParts` are private to that crate, so this stays local for now.
 fn parse_realm_issuer(issuer_url: &str) -> Result<(String, String)> {
     let issuer = Url::parse(issuer_url).context("Invalid OIDC issuer URL")?;
     let path = issuer.path().trim_end_matches('/');
@@ -120,8 +134,39 @@ pub(crate) struct KeycloakAdmin {
     pub(crate) realm: String,
     pub(crate) client_id: String,
     pub(crate) client_secret: String,
+    /// Cached client-credentials token with the instant it stops being usable.
+    token: Arc<RwLock<Option<(String, Instant)>>>,
 }
+/// Return the response when it carries a success status, otherwise fail with
+/// the status and body text for context.
+async fn expect_success(
+    response: oauth2::reqwest::Response,
+    what: &str,
+) -> Result<oauth2::reqwest::Response> {
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    bail!("{what} failed with HTTP {status}: {body}")
+}
+
 impl KeycloakAdmin {
+    /// URL for a Keycloak Admin API path under this realm, e.g.
+    /// `admin_url(&["users", user_id])`.
+    fn admin_url(&self, segments: &[&str]) -> String {
+        let mut url = format!(
+            "{}/admin/realms/{}",
+            self.server_base.trim_end_matches('/'),
+            self.realm
+        );
+        for segment in segments {
+            url.push('/');
+            url.push_str(segment);
+        }
+        url
+    }
+
     /// Admin client configured from `KEYCLOAK_*` env vars.
     pub(crate) fn from_env() -> Result<Self> {
         let issuer_url = config::var("OIDC_ISSUER_URL")?;
@@ -144,6 +189,7 @@ impl KeycloakAdmin {
             realm,
             client_id,
             client_secret,
+            token: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -157,11 +203,7 @@ impl KeycloakAdmin {
         return_url: &str,
     ) -> Result<CreatedUser> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users",
-            self.server_base.trim_end_matches('/'),
-            self.realm
-        );
+        let url = self.admin_url(&["users"]);
         let created_date = Utc::now().to_rfc3339();
         let mut attributes = HashMap::new();
         attributes.insert("createdDate", vec![created_date]);
@@ -217,12 +259,7 @@ impl KeycloakAdmin {
         redirect_uri: &str,
     ) -> Result<()> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users/{}/execute-actions-email",
-            self.server_base.trim_end_matches('/'),
-            self.realm,
-            user_id
-        );
+        let url = self.admin_url(&["users", user_id, "execute-actions-email"]);
         let response = self
             .http_client
             .put(&url)
@@ -238,13 +275,8 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak verification email request failed")?;
 
-        if response.status().is_success() {
-            return Ok(());
-        }
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        bail!("Keycloak verification email failed with HTTP {status}: {body}")
+        expect_success(response, "Keycloak verification email").await?;
+        Ok(())
     }
 
     /// Keycloak refuses to email disabled users; briefly enable, send, then disable again.
@@ -265,12 +297,7 @@ impl KeycloakAdmin {
 
     pub(crate) async fn get_user(&self, user_id: &str) -> Result<UserRepresentation> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users/{}",
-            self.server_base.trim_end_matches('/'),
-            self.realm,
-            user_id
-        );
+        let url = self.admin_url(&["users", user_id]);
         let response = self
             .http_client
             .get(&url)
@@ -279,11 +306,7 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak get user request failed")?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("Keycloak get user failed with HTTP {status}: {body}");
-        }
+        let response = expect_success(response, "Keycloak get user").await?;
 
         let body = response
             .text()
@@ -317,12 +340,7 @@ impl KeycloakAdmin {
         input: &ProfileInput,
     ) -> Result<()> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users/{}",
-            self.server_base.trim_end_matches('/'),
-            self.realm,
-            user_id
-        );
+        let url = self.admin_url(&["users", user_id]);
         // Preserve existing attributes (e.g. createdDate, registrationReturnUrl)
         // since a PUT with `attributes` replaces the whole attribute set.
         let current = self.get_user(user_id).await?;
@@ -353,13 +371,8 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak update profile request failed")?;
 
-        if response.status().is_success() {
-            return Ok(());
-        }
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        bail!("Keycloak update profile failed with HTTP {status}: {body}")
+        expect_success(response, "Keycloak update profile").await?;
+        Ok(())
     }
 
     pub(crate) async fn registration_return_url(&self, user_id: &str) -> Result<String> {
@@ -372,12 +385,7 @@ impl KeycloakAdmin {
 
     pub(crate) async fn approve_user(&self, user_id: &str) -> Result<()> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users/{}",
-            self.server_base.trim_end_matches('/'),
-            self.realm,
-            user_id
-        );
+        let url = self.admin_url(&["users", user_id]);
         let payload = ApproveUserPayload {
             enabled: true,
             email_verified: true,
@@ -394,23 +402,13 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak approve user request failed")?;
 
-        if response.status().is_success() {
-            return Ok(());
-        }
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        bail!("Keycloak approve user failed with HTTP {status}: {body}")
+        expect_success(response, "Keycloak approve user").await?;
+        Ok(())
     }
 
     pub(crate) async fn set_user_enabled(&self, user_id: &str, enabled: bool) -> Result<()> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users/{}",
-            self.server_base.trim_end_matches('/'),
-            self.realm,
-            user_id
-        );
+        let url = self.admin_url(&["users", user_id]);
         let payload = UpdateUserPayload { enabled };
         let body = serde_json::to_string(&payload).context("serialize update user payload")?;
         let response = self
@@ -423,23 +421,13 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak update user request failed")?;
 
-        if response.status().is_success() {
-            return Ok(());
-        }
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        bail!("Keycloak update user failed with HTTP {status}: {body}")
+        expect_success(response, "Keycloak update user").await?;
+        Ok(())
     }
 
     pub(crate) async fn delete_user(&self, user_id: &str) -> Result<()> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users/{}",
-            self.server_base.trim_end_matches('/'),
-            self.realm,
-            user_id
-        );
+        let url = self.admin_url(&["users", user_id]);
         let response = self
             .http_client
             .delete(&url)
@@ -448,13 +436,8 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak delete user request failed")?;
 
-        if response.status().is_success() {
-            return Ok(());
-        }
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        bail!("Keycloak delete user failed with HTTP {status}: {body}")
+        expect_success(response, "Keycloak delete user").await?;
+        Ok(())
     }
 
     pub(crate) async fn activate_verified_user(&self, user_id: &str) -> Result<bool> {
@@ -475,11 +458,7 @@ impl KeycloakAdmin {
         max: u32,
     ) -> Result<Vec<UserSummary>> {
         let token = self.access_token().await?;
-        let url = format!(
-            "{}/admin/realms/{}/users",
-            self.server_base.trim_end_matches('/'),
-            self.realm
-        );
+        let url = self.admin_url(&["users"]);
         let mut request = self
             .http_client
             .get(&url)
@@ -493,11 +472,7 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak list users request failed")?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("Keycloak list users failed with HTTP {status}: {body}");
-        }
+        let response = expect_success(response, "Keycloak list users").await?;
 
         let body = response
             .text()
@@ -512,11 +487,7 @@ impl KeycloakAdmin {
     /// account's user record directly by client.
     pub(crate) async fn list_service_accounts(&self) -> Result<Vec<ServiceAccountRow>> {
         let token = self.access_token().await?;
-        let clients_url = format!(
-            "{}/admin/realms/{}/clients",
-            self.server_base.trim_end_matches('/'),
-            self.realm
-        );
+        let clients_url = self.admin_url(&["clients"]);
         let response = self
             .http_client
             .get(&clients_url)
@@ -525,11 +496,7 @@ impl KeycloakAdmin {
             .send()
             .await
             .context("Keycloak list clients request failed")?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("Keycloak list clients failed with HTTP {status}: {body}");
-        }
+        let response = expect_success(response, "Keycloak list clients").await?;
         let body = response
             .text()
             .await
@@ -537,35 +504,45 @@ impl KeycloakAdmin {
         let clients: Vec<ClientSummary> = serde_json::from_str(&body)
             .context("Failed to parse Keycloak list clients response")?;
 
-        let mut rows = Vec::new();
-        for client in clients.into_iter().filter(|c| c.service_accounts_enabled) {
-            let url = format!(
-                "{}/admin/realms/{}/clients/{}/service-account-user",
-                self.server_base.trim_end_matches('/'),
-                self.realm,
-                client.id
-            );
-            let response = self
-                .http_client
-                .get(&url)
-                .bearer_auth(&token)
-                .send()
-                .await
-                .context("Keycloak service-account-user request failed")?;
-            if !response.status().is_success() {
-                continue;
-            }
-            let body = response
-                .text()
-                .await
-                .context("Failed to read Keycloak service-account-user response")?;
-            let user: UserSummary = serde_json::from_str(&body)
-                .context("Failed to parse Keycloak service-account-user response")?;
-            rows.push(ServiceAccountRow {
-                client_id: client.client_id,
-                user,
+        // One request per service-account client; run them concurrently rather
+        // than serially (N+1 latency on realms with many clients).
+        let lookups = clients
+            .into_iter()
+            .filter(|c| c.service_accounts_enabled)
+            .map(|client| {
+                let url = self.admin_url(&["clients", &client.id, "service-account-user"]);
+                let token = token.clone();
+                async move {
+                    let response = self
+                        .http_client
+                        .get(&url)
+                        .bearer_auth(&token)
+                        .send()
+                        .await
+                        .context("Keycloak service-account-user request failed")?;
+                    if !response.status().is_success() {
+                        return Ok(None);
+                    }
+                    let body = response
+                        .text()
+                        .await
+                        .context("Failed to read Keycloak service-account-user response")?;
+                    let user: UserSummary = serde_json::from_str(&body)
+                        .context("Failed to parse Keycloak service-account-user response")?;
+                    anyhow::Ok(Some(ServiceAccountRow {
+                        client_id: client.client_id,
+                        user,
+                    }))
+                }
             });
-        }
+
+        let rows = futures::future::join_all(lookups)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         Ok(rows)
     }
 
@@ -576,12 +553,7 @@ impl KeycloakAdmin {
             "{}/profile",
             config::public_base_url().trim_end_matches('/')
         );
-        let url = format!(
-            "{}/admin/realms/{}/users/{}/execute-actions-email",
-            self.server_base.trim_end_matches('/'),
-            self.realm,
-            user_id
-        );
+        let url = self.admin_url(&["users", user_id, "execute-actions-email"]);
         let response = self
             .http_client
             .put(&url)
@@ -597,16 +569,33 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak password reset email request failed")?;
 
-        if response.status().is_success() {
-            return Ok(());
-        }
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        bail!("Keycloak password reset email failed with HTTP {status}: {body}")
+        expect_success(response, "Keycloak password reset email").await?;
+        Ok(())
     }
 
+    /// Client-credentials token for the Admin API, cached until shortly before
+    /// it expires so each admin call does not cost a token round-trip.
     async fn access_token(&self) -> Result<String> {
+        if let Some((token, usable_until)) = self.token.read().await.as_ref()
+            && Instant::now() < *usable_until
+        {
+            return Ok(token.clone());
+        }
+
+        let mut guard = self.token.write().await;
+        if let Some((token, usable_until)) = guard.as_ref()
+            && Instant::now() < *usable_until
+        {
+            return Ok(token.clone());
+        }
+
+        let (token, expires_in) = self.fetch_access_token().await?;
+        let lifetime = Duration::from_secs(expires_in).saturating_sub(TOKEN_EXPIRY_MARGIN);
+        *guard = Some((token.clone(), Instant::now() + lifetime));
+        Ok(token)
+    }
+
+    async fn fetch_access_token(&self) -> Result<(String, u64)> {
         let url = format!(
             "{}/realms/{}/protocol/openid-connect/token",
             self.server_base.trim_end_matches('/'),
@@ -624,11 +613,7 @@ impl KeycloakAdmin {
             .await
             .context("Keycloak token request failed")?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("Keycloak token request failed with HTTP {status}: {body}");
-        }
+        let response = expect_success(response, "Keycloak token request").await?;
 
         let body = response
             .text()
@@ -636,6 +621,6 @@ impl KeycloakAdmin {
             .context("Failed to read Keycloak token response")?;
         let token: TokenResponse =
             serde_json::from_str(&body).context("Failed to parse Keycloak token response")?;
-        Ok(token.access_token)
+        Ok((token.access_token, token.expires_in))
     }
 }

@@ -1,9 +1,14 @@
 //! Environment configuration. Prefer `IDENTITY_*` variables; `RIDSER_*` is accepted as a
 //! deprecated fallback for upstream compatibility.
 
+mod registration_mode;
+pub use registration_mode::RegistrationMode;
+
 use std::env;
 
 use anyhow::{Context, Result, bail};
+
+use crate::session::SameSiteSetting;
 
 const MIN_SESSION_SECRET_BYTES: usize = 32;
 
@@ -23,6 +28,29 @@ pub fn var_optional(name: &str) -> Option<String> {
     env::var(&identity)
         .ok()
         .or_else(|| env::var(format!("RIDSER_{name}")).ok())
+}
+
+/// Comma-separated list from a required env var (entries trimmed, empties dropped).
+pub fn var_list(name: &str) -> Result<Vec<String>> {
+    Ok(split_list(&var(name)?))
+}
+
+fn split_list(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Whether `SESSION_SECURE_COOKIE_DISABLED` turns off the Secure cookie flag.
+pub fn session_secure_cookie_disabled() -> bool {
+    var_optional("SESSION_SECURE_COOKIE_DISABLED").is_some_and(|v| v.eq_ignore_ascii_case("true"))
+}
+
+/// SameSite mode for session-adjacent cookies (`SESSION_COOKIE_SAMESITE`).
+pub fn session_cookie_same_site() -> SameSiteSetting {
+    SameSiteSetting::from_env_string(var_optional("SESSION_COOKIE_SAMESITE"))
 }
 
 /// PostgreSQL URL for integration tests (`TEST_DATABASE_URL` or `IDENTITY_TEST_DATABASE_URL`).
@@ -167,15 +195,6 @@ pub fn registration_enabled() -> bool {
         )
 }
 
-/// Registration finalization policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RegistrationMode {
-    /// Enable the account immediately after create (dev convenience only).
-    AutoApprove,
-    /// Send Keycloak VERIFY_EMAIL and wait for `/register/verified`.
-    VerifyEmail,
-}
-
 /// Registration mode, selected solely by `REGISTRATION_MODE` so it is
 /// independent of the production hardening flag (`is_production`, which drives
 /// security headers). An explicit value is honored in every environment; the
@@ -206,11 +225,7 @@ pub fn registration_return_uris() -> Result<Vec<String>> {
     } else {
         var("LOGIN_REDIRECT_APP_URIS")?
     };
-    Ok(raw
-        .split(',')
-        .map(|entry| entry.trim().to_string())
-        .filter(|entry| !entry.is_empty())
-        .collect())
+    Ok(split_list(&raw))
 }
 
 fn normalize_service_base_url(url: &str) -> String {
@@ -264,11 +279,5 @@ pub fn orders_public_base_url() -> String {
 /// Realm roles that grant access to `/admin/*` (comma-separated). Defaults to
 /// `sigma-admin`.
 pub fn admin_realm_roles() -> Vec<String> {
-    var_optional("ADMIN_REALM_ROLES")
-        .unwrap_or_else(|| "sigma-admin".to_string())
-        .split(',')
-        .map(str::trim)
-        .filter(|role| !role.is_empty())
-        .map(str::to_string)
-        .collect()
+    split_list(&var_optional("ADMIN_REALM_ROLES").unwrap_or_else(|| "sigma-admin".to_string()))
 }

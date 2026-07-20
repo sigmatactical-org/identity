@@ -1,7 +1,5 @@
 //! [`UpdateProfilePayload`].
 
-#[allow(unused_imports)]
-use super::*;
 use serde::Serialize;
 use std::collections::HashMap;
 

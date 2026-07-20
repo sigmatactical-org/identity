@@ -1,8 +1,5 @@
 //! [`ProfileFields`].
 
-#[allow(unused_imports)]
-use super::*;
-
 /// All profile field values shared by the read-only view and the edit form.
 /// Empty strings represent unfilled fields.
 #[derive(Debug, Default, Clone)]

@@ -1,58 +1,21 @@
 #![forbid(unsafe_code)]
 
+mod cli;
 mod client;
 mod config;
+mod env;
 mod flow;
 mod runner;
 
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use serde_json::Value;
 use tracing_subscriber::EnvFilter;
 
+use cli::{Cli, Command};
 use client::ConformanceClient;
 use config::{bootstrap_state_path, default_variant, load_config, plans_path, state_path};
 use runner::{config_path, print_summary, run_plan};
-
-#[derive(Parser)]
-#[command(name = "sigma-conformance")]
-#[command(about = "OpenID Connect RP conformance runner for sigma-identity")]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Register the fake OP issuer with the conformance suite.
-    Bootstrap {
-        #[arg(long, default_value = "https://localhost.emobix.co.uk:8443")]
-        conformance_server: String,
-        #[arg(long, default_value = "sigma-identity-conformance")]
-        client_id: String,
-        #[arg(long, default_value = "conformance-client-secret-not-for-production")]
-        client_secret: String,
-    },
-    /// Run one or more conformance plans.
-    Run {
-        #[arg(long, default_value = "https://localhost.emobix.co.uk:8443")]
-        conformance_server: String,
-        #[arg(long, default_value = "sigma-identity-conformance")]
-        client_id: String,
-        #[arg(long, default_value = "conformance-client-secret-not-for-production")]
-        client_secret: String,
-        #[arg(long, default_value = "dev")]
-        version: String,
-        #[arg(long, default_value_t = 300)]
-        module_timeout: u64,
-        #[arg(long)]
-        plan: Option<String>,
-        #[arg(long)]
-        module: Vec<String>,
-        #[arg(long)]
-        all: bool,
-    },
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {

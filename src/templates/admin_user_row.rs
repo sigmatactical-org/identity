@@ -1,8 +1,5 @@
 //! [`AdminUserRow`].
 
-#[allow(unused_imports)]
-use super::*;
-
 /// One user in the admin list.
 pub(crate) struct AdminUserRow {
     pub id: String,

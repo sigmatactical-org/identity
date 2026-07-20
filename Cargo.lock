@@ -2988,6 +2988,7 @@ name = "sigma-contact-nav"
 version = "0.1.0"
 dependencies = [
  "askama",
+ "urlencoding",
 ]
 
 [[package]]
@@ -2995,11 +2996,13 @@ name = "sigma-human-check"
 version = "0.1.0"
 dependencies = [
  "altcha",
+ "axum",
  "base64 0.22.1",
  "rand 0.10.2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]
@@ -3015,6 +3018,7 @@ dependencies = [
  "chrono",
  "cookie",
  "dotenvy",
+ "futures",
  "http-body-util",
  "hyper",
  "hyper-rustls",
@@ -3028,7 +3032,6 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "sigma-cart-nav",
  "sigma-human-check",
  "sigma-identity-nav",
  "sigma-pg",
@@ -3062,6 +3065,7 @@ name = "sigma-identity-nav"
 version = "0.1.0"
 dependencies = [
  "askama",
+ "urlencoding",
 ]
 
 [[package]]
@@ -3086,7 +3090,6 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "axum",
- "bytes",
  "mime_guess",
  "rust-embed",
  "sigma-cart-nav",

@@ -1,11 +1,9 @@
 mod authorize_request_data;
-mod exp_field_in_jwt;
 mod introspection_response;
 mod introspection_result;
 mod oidc_inner;
 mod realm_access_claim;
 pub use authorize_request_data::AuthorizeRequestData;
-pub(crate) use exp_field_in_jwt::ExpFieldInJWT;
 pub(crate) use introspection_response::IntrospectionResponse;
 pub(crate) use introspection_result::IntrospectionResult;
 pub(crate) use oidc_inner::OidcInner;
@@ -14,11 +12,10 @@ pub(crate) use realm_access_claim::RealmAccessClaim;
 use std::{
     borrow::Cow,
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, anyhow};
-use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
 use oauth2::{AuthType, EndpointMaybeSet, EndpointNotSet, EndpointSet, basic::BasicTokenType};
 use openidconnect::{
     AccessTokenHash, AuthUrl, AuthorizationCode, ClaimsVerificationError, ClientId, ClientSecret,
@@ -39,7 +36,12 @@ use url::Url;
 
 use crate::config;
 
-use super::{AuthorizeData, SessionTokens, callback::TokenExchangeData};
+use super::{AuthorizeData, SessionTokens, callback::TokenExchangeData, jwt_payload};
+
+/// How long a fetched JWKS is reused before a scheduled refetch. Signing-key
+/// rotation is additionally handled on demand by [`OIDCClient::verify_with_jwks_retry`],
+/// which force-refreshes and retries once when verification fails on the keys.
+const JWKS_TTL: Duration = Duration::from_secs(300);
 
 type KeycloakTokenResponse = StandardTokenResponse<
     IdTokenFields<
@@ -51,6 +53,15 @@ type KeycloakTokenResponse = StandardTokenResponse<
     >,
     BasicTokenType,
 >;
+
+/// Outcome of one ID-token claims verification attempt.
+type ClaimsResult = Result<CoreIdTokenClaims, ClaimsVerificationError>;
+
+/// Nonce verifier for flows where the IdP does not echo a nonce (refresh,
+/// distributed claims): accept whatever is present.
+fn accept_any_nonce(_nonce: Option<&Nonce>) -> Result<(), String> {
+    Ok(())
+}
 
 type OidcCoreClient = CoreClient<
     EndpointSet,
@@ -74,12 +85,8 @@ pub struct OIDCClient {
     inner: Arc<RwLock<Option<Arc<OidcInner>>>>,
 }
 
-fn jwt_exp(jwt: &str) -> Result<u64> {
-    let payload = jwt.split('.').nth(1).unwrap_or_default();
-    let payload = STANDARD_NO_PAD.decode(payload)?;
-    let payload = String::from_utf8(payload)?;
-    let jwtdecoded: ExpFieldInJWT = serde_json::from_str(payload.as_str())?;
-    Ok(jwtdecoded.exp)
+fn jwt_exp(jwt: &str) -> Option<u64> {
+    jwt_payload(jwt)?.get("exp")?.as_u64()
 }
 
 fn normalize_issuer(issuer: &str) -> String {
@@ -99,12 +106,6 @@ fn issuer_identity_key(issuer: &str) -> Option<String> {
         Some(p) => format!(":{p}"),
     };
     Some(format!("{host}{port_suffix}{path}"))
-}
-
-fn decode_jwt_payload(id_token: &str) -> Result<Value> {
-    let payload = id_token.split('.').nth(1).unwrap_or_default();
-    let payload = STANDARD_NO_PAD.decode(payload)?;
-    Ok(serde_json::from_slice(&payload)?)
 }
 
 fn validate_userinfo_subject(
@@ -128,7 +129,7 @@ fn token_response_to_session_tokens(
         .id_token()
         .ok_or_else(|| anyhow!("Server did not return an ID token"))?;
 
-    let expires_at = if let Ok(exp) = jwt_exp(token_response.access_token().secret()) {
+    let expires_at = if let Some(exp) = jwt_exp(token_response.access_token().secret()) {
         UNIX_EPOCH + Duration::from_secs(exp)
     } else {
         token_response
@@ -139,7 +140,7 @@ fn token_response_to_session_tokens(
 
     let refresh_expires_at = token_response
         .refresh_token()
-        .and_then(|rt| jwt_exp(rt.secret()).ok())
+        .and_then(|rt| jwt_exp(rt.secret()))
         .map(|exp| UNIX_EPOCH + Duration::from_secs(exp))
         .unwrap_or_else(SystemTime::now);
 
@@ -487,7 +488,7 @@ impl OIDCClient {
         )
         .set_auth_type(auth_type);
 
-        Ok(OidcInner { client, metadata })
+        Ok(OidcInner::new(client, metadata))
     }
 
     fn id_token_verifier(
@@ -503,38 +504,49 @@ impl OIDCClient {
         )
     }
 
-    #[allow(dead_code)]
-    fn id_token_verifier_for_issuer(
-        &self,
-        issuer: IssuerUrl,
-        jwks: CoreJsonWebKeySet,
-    ) -> CoreIdTokenVerifier<'_> {
-        CoreIdTokenVerifier::new_confidential_client(
-            ClientId::new(self.client_id.clone()),
-            ClientSecret::new(self.client_secret.clone()),
-            issuer,
-            jwks,
-        )
+    /// Cached JWKS for `inner`, refetched when older than [`JWKS_TTL`] or when
+    /// `force_refresh` is set (signing-key rotation retry).
+    async fn jwks(&self, inner: &OidcInner, force_refresh: bool) -> Result<CoreJsonWebKeySet> {
+        if !force_refresh
+            && let Some((fetched_at, jwks)) = inner.jwks.read().await.as_ref()
+            && fetched_at.elapsed() < JWKS_TTL
+        {
+            return Ok(jwks.clone());
+        }
+
+        let mut guard = inner.jwks.write().await;
+        if !force_refresh
+            && let Some((fetched_at, jwks)) = guard.as_ref()
+            && fetched_at.elapsed() < JWKS_TTL
+        {
+            return Ok(jwks.clone());
+        }
+
+        let jwks = CoreJsonWebKeySet::fetch_async(inner.metadata.jwks_uri(), &self.http_client)
+            .await
+            .context("Failed to fetch JWKS")?;
+        *guard = Some((Instant::now(), jwks.clone()));
+        Ok(jwks)
     }
 
-    #[allow(dead_code)]
-    async fn verify_backchannel_id_token(
+    /// Verify an ID token against the current JWKS, refetching the key set once
+    /// and retrying when verification fails on the keys themselves (rotation).
+    ///
+    /// `verify_nonce` receives the verifier built from the key set: pass the
+    /// login nonce for the code flow, or an accept-any closure for flows (refresh,
+    /// backchannel) where the IdP does not echo a nonce.
+    async fn verify_with_jwks_retry(
         &self,
         inner: &OidcInner,
         id_token: &CoreIdToken,
+        what: &str,
+        verify_nonce: impl Fn(&CoreIdToken, &CoreIdTokenVerifier<'_>) -> ClaimsResult,
     ) -> Result<CoreIdTokenClaims> {
-        let issuer = self
-            .discovery_issuer_url
-            .as_deref()
-            .unwrap_or(self.issuer_url.as_str());
-        let issuer =
-            IssuerUrl::new(issuer.to_string()).context("Backchannel issuer URL is not valid")?;
-
         for attempt in 0..2 {
-            let jwks = self.fetch_jwks(&inner.metadata).await?;
-            let verifier = self.id_token_verifier_for_issuer(issuer.clone(), jwks);
-            match id_token.claims(&verifier, |_nonce: Option<&Nonce>| Ok(())) {
-                Ok(claims) => return Ok(claims.clone()),
+            let jwks = self.jwks(inner, attempt > 0).await?;
+            let verifier = self.id_token_verifier(inner, jwks);
+            match verify_nonce(id_token, &verifier) {
+                Ok(claims) => return Ok(claims),
                 Err(
                     err @ ClaimsVerificationError::SignatureVerification(
                         SignatureVerificationError::CryptoError(_)
@@ -542,23 +554,15 @@ impl OIDCClient {
                         | SignatureVerificationError::NoMatchingKey,
                     ),
                 ) if attempt == 0 => {
-                    debug!(
-                        "Backchannel ID token signature verification failed, refetching JWKS: {err:?}"
-                    );
+                    debug!("{what} signature verification failed, refetching JWKS: {err:?}");
                     continue;
                 }
                 Err(err) => return Err(err.into()),
             }
         }
         Err(anyhow!(
-            "Backchannel ID token signature verification failed after JWKS refresh"
+            "{what} signature verification failed after JWKS refresh"
         ))
-    }
-
-    async fn fetch_jwks(&self, metadata: &CoreProviderMetadata) -> Result<CoreJsonWebKeySet> {
-        CoreJsonWebKeySet::fetch_async(metadata.jwks_uri(), &self.http_client)
-            .await
-            .context("Failed to fetch JWKS")
     }
 
     async fn verify_id_token(
@@ -567,27 +571,10 @@ impl OIDCClient {
         id_token: &CoreIdToken,
         nonce: &Nonce,
     ) -> Result<CoreIdTokenClaims> {
-        for attempt in 0..2 {
-            let jwks = self.fetch_jwks(&inner.metadata).await?;
-            let verifier = self.id_token_verifier(inner, jwks);
-            match id_token.claims(&verifier, nonce) {
-                Ok(claims) => return Ok(claims.clone()),
-                Err(
-                    err @ ClaimsVerificationError::SignatureVerification(
-                        SignatureVerificationError::CryptoError(_)
-                        | SignatureVerificationError::AmbiguousKeyId(_)
-                        | SignatureVerificationError::NoMatchingKey,
-                    ),
-                ) if attempt == 0 => {
-                    debug!("ID token signature verification failed, refetching JWKS: {err:?}");
-                    continue;
-                }
-                Err(err) => return Err(err.into()),
-            }
-        }
-        Err(anyhow!(
-            "ID token signature verification failed after JWKS refresh"
-        ))
+        self.verify_with_jwks_retry(inner, id_token, "ID token", |token, verifier| {
+            token.claims(verifier, nonce).cloned()
+        })
+        .await
     }
 
     async fn verify_refreshed_id_token(
@@ -595,29 +582,10 @@ impl OIDCClient {
         inner: &OidcInner,
         id_token: &CoreIdToken,
     ) -> Result<CoreIdTokenClaims> {
-        for attempt in 0..2 {
-            let jwks = self.fetch_jwks(&inner.metadata).await?;
-            let verifier = self.id_token_verifier(inner, jwks);
-            match id_token.claims(&verifier, |_nonce: Option<&Nonce>| Ok(())) {
-                Ok(claims) => return Ok(claims.clone()),
-                Err(
-                    err @ ClaimsVerificationError::SignatureVerification(
-                        SignatureVerificationError::CryptoError(_)
-                        | SignatureVerificationError::AmbiguousKeyId(_)
-                        | SignatureVerificationError::NoMatchingKey,
-                    ),
-                ) if attempt == 0 => {
-                    debug!(
-                        "Refresh ID token signature verification failed, refetching JWKS: {err:?}"
-                    );
-                    continue;
-                }
-                Err(err) => return Err(err.into()),
-            }
-        }
-        Err(anyhow!(
-            "Refresh ID token signature verification failed after JWKS refresh"
-        ))
+        self.verify_with_jwks_retry(inner, id_token, "Refresh ID token", |token, verifier| {
+            token.claims(verifier, accept_any_nonce).cloned()
+        })
+        .await
     }
 
     async fn resolve_distributed_claims(
@@ -626,7 +594,9 @@ impl OIDCClient {
         id_token: &CoreIdToken,
         nonce: &Nonce,
     ) -> Result<()> {
-        let payload = decode_jwt_payload(id_token.to_string().as_str())?;
+        let Some(payload) = jwt_payload(&id_token.to_string()) else {
+            return Ok(());
+        };
         let Some(sources) = payload.get("_claim_sources").and_then(|v| v.as_object()) else {
             return Ok(());
         };
@@ -634,7 +604,7 @@ impl OIDCClient {
             return Ok(());
         }
 
-        let jwks = self.fetch_jwks(&inner.metadata).await?;
+        let jwks = self.jwks(inner, false).await?;
         let verifier = self.id_token_verifier(inner, jwks);
 
         for source in sources.values() {
@@ -683,7 +653,7 @@ impl OIDCClient {
             )
         })?;
         let _ = distributed_token
-            .claims(verifier, |_: Option<&Nonce>| Ok(()))
+            .claims(verifier, accept_any_nonce)
             .context("Distributed claim JWT verification failed")?;
         Ok(())
     }
@@ -738,7 +708,7 @@ impl OIDCClient {
         if sources.is_empty() {
             return Ok(());
         }
-        let jwks = self.fetch_jwks(&inner.metadata).await?;
+        let jwks = self.jwks(inner, false).await?;
         let verifier = self.id_token_verifier(inner, jwks);
         for source in sources.values() {
             self.resolve_distributed_source(source, &verifier, nonce)
@@ -822,7 +792,7 @@ impl OIDCClient {
         let claims = self.verify_id_token(&inner, id_token, &nonce).await?;
 
         if let Some(expected_access_token_hash) = claims.access_token_hash() {
-            let jwks = self.fetch_jwks(&inner.metadata).await?;
+            let jwks = self.jwks(&inner, false).await?;
             let verifier = self.id_token_verifier(&inner, jwks);
             let actual_access_token_hash = AccessTokenHash::from_token(
                 token_response.access_token(),
@@ -853,42 +823,9 @@ impl OIDCClient {
                     .await?;
             }
             if config::oidc_jwks_refresh_after_userinfo() {
-                let _ = self.fetch_jwks(&inner.metadata).await;
+                let _ = self.jwks(&inner, true).await;
             }
         }
-
-        token_response_to_session_tokens(&token_response)
-            .map(|tr| (tr, claims.subject().to_string()))
-    }
-
-    /// Resource-owner password grant for post-registration sign-in (dev / trusted server path only).
-    #[allow(dead_code)]
-    pub(crate) async fn exchange_password(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<(SessionTokens, String)> {
-        use oauth2::{ResourceOwnerPassword, ResourceOwnerUsername};
-
-        let inner = self.ensure_inner().await?;
-        let token_response = inner
-            .client
-            .exchange_password(
-                &ResourceOwnerUsername::new(username.to_string()),
-                &ResourceOwnerPassword::new(password.to_string()),
-            )?
-            .add_scope(Scope::new("openid".to_string()))
-            .request_async(&self.http_client)
-            .await
-            .map_err(|e| {
-                debug_token_request_error(&e);
-                anyhow!("Password grant failed")
-            })?;
-
-        let id_token = token_response
-            .id_token()
-            .ok_or_else(|| anyhow!("Server did not return an ID token"))?;
-        let claims = self.verify_backchannel_id_token(&inner, id_token).await?;
 
         token_response_to_session_tokens(&token_response)
             .map(|tr| (tr, claims.subject().to_string()))
@@ -920,7 +857,7 @@ impl OIDCClient {
             }
 
             if let Some(expected_access_token_hash) = claims.access_token_hash() {
-                let jwks = self.fetch_jwks(&inner.metadata).await?;
+                let jwks = self.jwks(&inner, false).await?;
                 let verifier = self.id_token_verifier(&inner, jwks);
                 let actual_access_token_hash = AccessTokenHash::from_token(
                     token_response.access_token(),

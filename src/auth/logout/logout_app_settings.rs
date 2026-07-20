@@ -1,15 +1,12 @@
 //! [`LogoutAppSettings`].
 
 use super::super::allowlist::UriAllowlist;
-#[allow(unused_imports)]
-use super::*;
 use tracing::trace;
 
 #[derive(Clone, Debug)]
 pub struct LogoutAppSettings {
     pub(crate) client_id: String,
     pub(crate) logout_uri: String,
-    pub(crate) _behavior: LogoutBehavior,
     pub(crate) allowed_app_uris: UriAllowlist,
     pub(crate) allowed_oidc_redirect_uris: UriAllowlist,
 }

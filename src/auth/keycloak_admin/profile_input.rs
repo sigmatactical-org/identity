@@ -1,8 +1,5 @@
 //! [`ProfileInput`].
 
-#[allow(unused_imports)]
-use super::*;
-
 /// All editable profile fields, as submitted by the profile edit form.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct ProfileInput {

@@ -1,7 +1,7 @@
 //! [`IntrospectionResponse`].
 
-#[allow(unused_imports)]
-use super::*;
+use super::RealmAccessClaim;
+
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

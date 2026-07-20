@@ -1,8 +1,6 @@
 //! [`RegistrationAppSettings`].
 
 use super::super::allowlist::UriAllowlist;
-#[allow(unused_imports)]
-use super::*;
 
 #[derive(Clone, Debug)]
 pub struct RegistrationAppSettings {

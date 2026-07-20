@@ -1,7 +1,6 @@
 //! [`ServiceAccountRow`].
 
-#[allow(unused_imports)]
-use super::*;
+use super::UserSummary;
 
 /// A client's service-account user, labeled with the owning client id.
 pub(crate) struct ServiceAccountRow {

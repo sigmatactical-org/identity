@@ -24,7 +24,6 @@ use tracing::{debug, error};
 use url::Url;
 
 use crate::config;
-use crate::human_check;
 use crate::templates;
 
 use super::{
@@ -119,32 +118,21 @@ pub(crate) async fn register_submit(
         return Err((StatusCode::BAD_REQUEST, "Invalid return_url").into_response());
     }
 
-    if let Err(err) = human_check::verify_field(&human_check, &form.altcha) {
-        return render_register_page(RegisterPage {
-            return_url: form.return_url,
-            email: form.email,
-            username: form.username,
-            first_name: form.first_name,
-            last_name: form.last_name,
-            error: Some(human_check::rejection_message(&err)),
+    if let Err(err) = human_check.verify_payload_or_skip(&form.altcha) {
+        let message = sigma_human_check::rejection_message(&err);
+        return Ok(render_error_page(RegisterPage::from_form(
+            form,
             human_check,
-        })
-        .map(|html| html.into_response())
-        .map_err(|error| *error);
+            message,
+        )));
     }
 
     if let Some(error) = validate_form(&form) {
-        return render_register_page(RegisterPage {
-            return_url: form.return_url,
-            email: form.email,
-            username: form.username,
-            first_name: form.first_name,
-            last_name: form.last_name,
-            error: Some(error),
+        return Ok(render_error_page(RegisterPage::from_form(
+            form,
             human_check,
-        })
-        .map(|html| html.into_response())
-        .map_err(|error| *error);
+            error,
+        )));
     }
 
     let username = form.username.trim();
@@ -189,31 +177,28 @@ pub(crate) async fn register_submit(
                             delete_error
                         );
                     }
-                    render_register_page(RegisterPage {
-                        return_url: form.return_url,
-                        email: form.email,
-                        username: form.username,
-                        first_name: form.first_name,
-                        last_name: form.last_name,
-                        error: Some(finalization_error_message(&finalize_error)),
-                        human_check: human_check.clone(),
-                    })
-                    .map(|html| html.into_response())
-                    .map_err(|error| *error)
+                    Ok(render_error_page(RegisterPage::from_form(
+                        form,
+                        human_check,
+                        finalization_error_message(&finalize_error),
+                    )))
                 }
             }
         }
-        Err(error) => render_register_page(RegisterPage {
-            return_url: form.return_url,
-            email: form.email,
-            username: form.username,
-            first_name: form.first_name,
-            last_name: form.last_name,
-            error: Some(error.to_string()),
+        Err(error) => Ok(render_error_page(RegisterPage::from_form(
+            form,
             human_check,
-        })
-        .map(|html| html.into_response())
-        .map_err(|error| *error),
+            error.to_string(),
+        ))),
+    }
+}
+
+/// Re-render the registration form carrying an error. A render failure is
+/// itself a response, so this never needs a fallible return.
+fn render_error_page(page: RegisterPage) -> Response {
+    match render_register_page(page) {
+        Ok(html) => html.into_response(),
+        Err(error) => *error,
     }
 }
 

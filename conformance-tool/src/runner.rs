@@ -1,3 +1,7 @@
+mod module_result;
+pub use module_result::ModuleResult;
+
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -10,7 +14,16 @@ use crate::config::{
     conformance_root, module_action, module_env_overrides, plan_env_overrides,
     write_conformance_env,
 };
+use crate::env::{env_f64, env_is_false};
 use crate::flow::{ensure_identity_running, perform_module_action};
+
+/// The suite's "variant already set by the plan" rejection, naming the variant.
+static VARIANT_CONFLICT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"Variant (?:'|\\u0027)([^'\\]+)(?:'|\\u0027) has been set by user, but test plan already sets",
+    )
+    .expect("valid variant-conflict regex")
+});
 
 const TERMINAL_STATES: &[&str] = &[
     "INTERRUPTED",
@@ -20,12 +33,6 @@ const TERMINAL_STATES: &[&str] = &[
     "PASSED",
     "SKIPPED",
 ];
-
-pub struct ModuleResult {
-    pub name: String,
-    pub result: String,
-    pub module_id: String,
-}
 
 pub async fn create_test_plan_adaptive(
     client: &ConformanceClient,
@@ -37,18 +44,13 @@ pub async fn create_test_plan_adaptive(
         return client.create_test_plan(plan_name, config, None).await;
     }
 
-    let conflict_re = Regex::new(
-        r"Variant (?:'|\\u0027)([^'\\]+)(?:'|\\u0027) has been set by user, but test plan already sets",
-    )
-    .unwrap();
-
     loop {
         let current = variant.as_ref();
         match client.create_test_plan(plan_name, config, current).await {
             Ok(plan_id) => return Ok(plan_id),
             Err(err) => {
                 let msg = format!("{err:#}");
-                if let Some(caps) = conflict_re.captures(&msg) {
+                if let Some(caps) = VARIANT_CONFLICT.captures(&msg) {
                     let key = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                     if let Some(map) = variant.as_mut()
                         && map.remove(key).is_some()
@@ -260,17 +262,4 @@ pub fn print_summary(plan_name: &str, plan_id: &str, results: &[ModuleResult], s
 
 pub fn config_path(relative: &str) -> std::path::PathBuf {
     conformance_root().join(relative)
-}
-
-fn env_f64(name: &str, default: f64) -> f64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
-fn env_is_false(name: &str) -> bool {
-    std::env::var(name)
-        .map(|v| matches!(v.as_str(), "0" | "false" | "FALSE"))
-        .unwrap_or(false)
 }

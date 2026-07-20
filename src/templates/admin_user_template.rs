@@ -1,7 +1,7 @@
 //! [`AdminUserTemplate`].
 
-#[allow(unused_imports)]
-use super::*;
+use super::ProfileViewRow;
+
 use askama::Template;
 use sigma_theme::nav::SiteHeader;
 
