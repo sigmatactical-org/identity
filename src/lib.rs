@@ -105,16 +105,12 @@ pub async fn run() -> anyhow::Result<()> {
         debug!("OIDC conformance mode enabled (see /conformance/ harness)");
     }
     let proxy_rules: Vec<_> = env::vars()
-        .filter_map(|(key, value)| {
-            if (key.starts_with("IDENTITY_PROXY_TARGET_RULE_")
+        .filter(|(key, value)| {
+            (key.starts_with("IDENTITY_PROXY_TARGET_RULE_")
                 || key.starts_with("RIDSER_PROXY_TARGET_RULE_"))
                 && value.contains("=>")
-            {
-                Some(value)
-            } else {
-                None
-            }
         })
+        .map(|(_, value)| value)
         .collect();
     let proxy_config: ProxyConfig = ProxyConfig::try_init(
         crate::config::var("PROXY_TARGET")?,

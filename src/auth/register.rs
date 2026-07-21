@@ -138,7 +138,7 @@ pub(crate) async fn register_submit(
     let username = form.username.trim();
     let email = form.email.trim();
 
-    match keycloak
+    let created = match keycloak
         .create_user(
             username,
             email,
@@ -149,47 +149,46 @@ pub(crate) async fn register_submit(
         )
         .await
     {
-        Ok(created) => {
-            let context = RegistrationContext {
-                verification_redirect_uri: verification_redirect_uri(&created.id),
-            };
-            match adapter
-                .finalize_registration(&keycloak, &created, &context)
-                .await
-            {
-                Ok(RegistrationOutcome::Approved) => Ok(Redirect::to(&register_success_location(
-                    &form.return_url,
-                    true,
-                ))
-                .into_response()),
-                Ok(RegistrationOutcome::PendingEmailVerification) => Ok(Redirect::to(
-                    &register_success_location(&form.return_url, false),
-                )
-                .into_response()),
-                Err(finalize_error) => {
-                    error!(
-                        "Registration finalization failed after user create: {:?}",
-                        finalize_error
-                    );
-                    if let Err(delete_error) = keycloak.delete_user(&created.id).await {
-                        error!(
-                            "Failed to roll back user after registration finalization failure: {:?}",
-                            delete_error
-                        );
-                    }
-                    Ok(render_error_page(RegisterPage::from_form(
-                        form,
-                        human_check,
-                        finalization_error_message(&finalize_error),
-                    )))
-                }
-            }
+        Ok(created) => created,
+        Err(error) => {
+            return Ok(render_error_page(RegisterPage::from_form(
+                form,
+                human_check,
+                error.to_string(),
+            )));
         }
-        Err(error) => Ok(render_error_page(RegisterPage::from_form(
-            form,
-            human_check,
-            error.to_string(),
-        ))),
+    };
+
+    let context = RegistrationContext {
+        verification_redirect_uri: verification_redirect_uri(&created.id),
+    };
+    match adapter
+        .finalize_registration(&keycloak, &created, &context)
+        .await
+    {
+        Ok(RegistrationOutcome::Approved) => {
+            Ok(Redirect::to(&register_success_location(&form.return_url, true)).into_response())
+        }
+        Ok(RegistrationOutcome::PendingEmailVerification) => {
+            Ok(Redirect::to(&register_success_location(&form.return_url, false)).into_response())
+        }
+        Err(finalize_error) => {
+            error!(
+                "Registration finalization failed after user create: {:?}",
+                finalize_error
+            );
+            if let Err(delete_error) = keycloak.delete_user(&created.id).await {
+                error!(
+                    "Failed to roll back user after registration finalization failure: {:?}",
+                    delete_error
+                );
+            }
+            Ok(render_error_page(RegisterPage::from_form(
+                form,
+                human_check,
+                finalization_error_message(&finalize_error),
+            )))
+        }
     }
 }
 

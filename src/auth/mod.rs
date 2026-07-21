@@ -110,46 +110,36 @@ mod realm_role_tests {
     }
 }
 
-fn display_name_from_id_token(id_token: &str) -> Option<String> {
-    let claims = jwt_payload(id_token)?;
-    if let Some(username) = claims
-        .get("preferred_username")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return Some(username.to_string());
-    }
-    if let Some(name) = claims
-        .get("name")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return Some(name.to_string());
-    }
+/// A claim's string value, trimmed, when present and non-empty.
+fn nonempty_string_claim(claims: &serde_json::Value, key: &str) -> Option<String> {
     claims
-        .get("email")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|email| {
-            email
-                .split('@')
-                .next()
-                .filter(|local| !local.is_empty())
-                .unwrap_or(email)
-                .to_string()
-        })
-}
-
-fn email_from_id_token(id_token: &str) -> Option<String> {
-    jwt_payload(id_token)?
-        .get("email")
+        .get(key)
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+fn display_name_from_id_token(id_token: &str) -> Option<String> {
+    let claims = jwt_payload(id_token)?;
+    if let Some(username) = nonempty_string_claim(&claims, "preferred_username") {
+        return Some(username);
+    }
+    if let Some(name) = nonempty_string_claim(&claims, "name") {
+        return Some(name);
+    }
+    // Fall back to the local part of the email address.
+    let email = nonempty_string_claim(&claims, "email")?;
+    let local = email
+        .split('@')
+        .next()
+        .filter(|local| !local.is_empty())
+        .unwrap_or(&email);
+    Some(local.to_string())
+}
+
+fn email_from_id_token(id_token: &str) -> Option<String> {
+    nonempty_string_claim(&jwt_payload(id_token)?, "email")
 }
 
 /// Identity login URL that lands the browser back on `app_uri` after sign-in.
