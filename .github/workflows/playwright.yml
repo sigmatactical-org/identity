@@ -38,16 +38,16 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://sigma:sigma@127.0.0.1:5432/sigma
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: sigmatactical-org/sigma-theme
           path: theme
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: sigmatactical-org/sigma-pg
           path: sigma-pg
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: sigmatactical-org/human-check
           path: human-check
@@ -82,7 +82,7 @@ jobs:
       - name: Wait for identity
         run: ./scripts/e2e-stack.sh wait
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -100,7 +100,7 @@ jobs:
         working-directory: tests
         run: npx playwright test --project=chromium
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report

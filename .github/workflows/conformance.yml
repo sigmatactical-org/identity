@@ -55,8 +55,8 @@ jobs:
       CONFORMANCE_SERVER: ${{ inputs.conformance_server }}
       TEST_DATABASE_URL: postgres://sigma:sigma@127.0.0.1:5432/sigma
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: sigmatactical-org/sigma-theme
           path: theme
@@ -94,7 +94,7 @@ jobs:
             ./scripts/conformance-stack.sh test --plan oidcc-client-test-plan
           fi
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: conformance-results
