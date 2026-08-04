@@ -63,7 +63,7 @@ tower = { version = "0.5.3", features = ["util"] }
 mimalloc = "0.1.52"
 rustls = { version = "0.23.42", features = ["ring"] }
 sigma-config = { git = "https://github.com/sigmatactical-org/config.git", rev = "e66ad4ed16f248b7235c149bec8bba279c7414d2" }
-sigma-theme = { git = "https://github.com/sigmatactical-org/sigma-theme.git", rev = "1b5254c46e3b6e5f271116fc61f746ca9f180612", default-features = false, features = ["askama", "axum"] }
+sigma-theme = { git = "https://github.com/sigmatactical-org/sigma-theme.git", rev = "8419ea6a03fbb808f9dc50f02e8711cac9e67318", default-features = false, features = ["askama", "axum"] }
 sigma-human-check = { git = "https://github.com/sigmatactical-org/human-check.git", rev = "068e888a8e4346d663761814d8303c52f5b0301c", features = ["axum"] }
 sigma-identity-nav = { path = "nav" }
 
