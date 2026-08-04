@@ -38,71 +38,39 @@ jobs:
       TEST_DATABASE_URL: postgres://sigma:sigma@127.0.0.1:5432/sigma
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/sigma-theme
-          path: theme
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/sigma-pg
-          path: sigma-pg
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/human-check
-          path: human-check
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: |
-            theme/ts/package-lock.json
-            ts/package-lock.json
-      - name: Prepare build
-        run: ./scripts/prepare-local.sh
+          cache-dependency-path: ts/package-lock.json
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
       - name: Prepare PostgreSQL schema
         run: ./scripts/prepare-e2e-postgres.sh
-      - run: cargo test --all-targets -- --test-threads=1
+      - run: cargo test --locked --all-targets -- --test-threads=1
 
   clippy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/sigma-theme
-          path: theme
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/human-check
-          path: human-check
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: |
-            theme/ts/package-lock.json
-            ts/package-lock.json
-      - name: Prepare build
-        run: ./scripts/prepare-local.sh
+          cache-dependency-path: ts/package-lock.json
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --locked --all-targets -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/human-check
-          path: human-check
       - name: Patch human-check dependency
         run: |
           mkdir -p .cargo
@@ -120,10 +88,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/human-check
-          path: human-check
       - name: Patch human-check dependency
         run: |
           mkdir -p .cargo

@@ -43,6 +43,8 @@ Required:
 
 Registration (`/register`) uses the OIDC client's service account to create users in Keycloak. The identity client needs the `manage-users` role on `realm-management`. New users are stored disabled with a `createdDate` user attribute (Keycloak also records `createdTimestamp`), emailed a `VERIFY_EMAIL` action link, and enabled at `/register/verified` after the address is confirmed. Allowed `return_url` values default to `IDENTITY_LOGIN_REDIRECT_APP_URIS` (override with `IDENTITY_REGISTRATION_RETURN_URIS`). Set `IDENTITY_PUBLIC_BASE_URL` for verification-email redirect links. Disable with `IDENTITY_REGISTRATION_DISABLED=true`.
 
+The registration form is guarded by [sigma-human-check](https://github.com/sigmatactical-org/human-check), which fails closed. While registration is enabled, identity refuses to start unless `HUMAN_CHECK_HMAC_SECRET` and `HUMAN_CHECK_KEY_SECRET` are both set (≥32 characters, no `IDENTITY_` prefix) or `HUMAN_CHECK_DISABLED=true` opts out of verification. `.env.default` ships fixture values with a low `HUMAN_CHECK_COST` for local runs.
+
 Optional:
 
 | Variable | Purpose |
@@ -71,13 +73,12 @@ sigma-identity is a stateless BFF except for **PostgreSQL sessions**. It does no
 | **PostgreSQL** | kind cluster via `platform/scripts/postgres-dev.sh port-forward-bg` → `127.0.0.1:5432` | kind Postgres via port-forward to host | In-cluster Postgres |
 | **OIDC IdP** | Keycloak via dev-stack → `127.0.0.1:8101` | Keycloak in devcontainer | Keycloak (or other certified OP) |
 | **Backend to proxy** | Echo via dev-stack → `127.0.0.1:8088` | compose `echo` service | Your API services |
-| **sigma-theme** | `./scripts/prepare-local.sh` | same | baked into release image |
+| **sigma-theme** | pinned git dep (`cargo build`) | same | baked into release image |
 | **Config** | `.env.host` (see below) | `.env.default` in container | Secret Manager / K8s secrets |
 
 ### Quick start (host — recommended for debugging)
 
 ```bash
-./scripts/prepare-local.sh
 ./scripts/dev-stack.sh up
 ./scripts/dev-stack.sh wait
 ./scripts/dev-stack.sh env      # writes .env from .env.host
@@ -106,13 +107,35 @@ Keycloak, Traefik, and an echo backend are included in the devcontainer compose 
 
 ### Local (Rust only, bring your own PostgreSQL + IdP)
 
-Requires a running PostgreSQL from the [platform](https://github.com/sigmatactical-org/platform) kind stack (`./scripts/postgres-dev.sh port-forward-bg`), an OIDC provider, and a built [`sigma-theme`](https://github.com/sigmatactical-org/sigma-theme) checkout:
+Requires a running PostgreSQL from the [platform](https://github.com/sigmatactical-org/platform) kind stack (`./scripts/postgres-dev.sh port-forward-bg`), and an OIDC provider:
 
 ```bash
-./scripts/prepare-local.sh   # clone/link sigma-theme, build TS, patch cargo
 cp .env.host .env            # or .env.default if IdP/echo hostnames match
 cargo run
 ```
+
+### Shared crates
+
+`sigma-theme`, `sigma-pg`, and `sigma-human-check` are pinned git
+dependencies, so a fresh clone builds with nothing but `cargo`: the revision
+in `Cargo.toml` is fetched, and `build.rs` writes the `askama.toml` that points
+at sigma-theme's templates wherever Cargo put them.
+
+When one of those crates is checked out beside this repo and you are editing it,
+link the checkouts so your edits are picked up without a push:
+
+```bash
+./scripts/prepare-local.sh
+```
+
+That writes `[patch]` entries into `.cargo/config.toml` (gitignored) for the
+crates it finds and leaves the rest on their pinned revision; it prints what it
+linked. Undo by deleting the file. Note that building against a linked checkout
+rewrites `Cargo.lock` into path form — don't commit that; `platform`'s
+`scripts/relock.sh` restores the git-resolved lockfile CI expects.
+
+Bumping a shared crate is `platform/scripts/pin-shared-revs.sh <crate>` after
+that crate is pushed, which updates every consumer's pin at once.
 
 ## Testing
 
@@ -133,7 +156,6 @@ cd ts && npm ci && npm run check && npm run build
 Browser E2E (Playwright, optional):
 
 ```bash
-./scripts/prepare-local.sh
 ./scripts/e2e-stack.sh up
 ./scripts/e2e-stack.sh build && ./scripts/e2e-stack.sh run && ./scripts/e2e-stack.sh wait
 cd tests && npm ci && npx playwright install --with-deps && npx playwright test
@@ -148,7 +170,6 @@ Runs the [OpenID Foundation conformance suite](https://gitlab.com/openid/conform
 
 ```bash
 # /etc/hosts: 127.0.0.1 localhost.emobix.co.uk
-./scripts/prepare-local.sh
 ./scripts/conformance-stack.sh up
 ./scripts/conformance-stack.sh wait-suite
 ./scripts/conformance-stack.sh build
@@ -162,7 +183,7 @@ CI (`.github/workflows/conformance.yml`): full dev plan on `main` pushes; all pl
 
 ## File serving
 
-App-specific pages (e.g. `/exampleapp/`) render Askama templates under `templates/` that extend [sigma-theme](https://github.com/sigmatactical-org/sigma-theme) `base.html`. Static assets (JS, CSS) for those apps live under `files/`. Shared chrome — CSS, JS, home page, favicon — comes from the sigma-theme crate (embedded at compile time via `./scripts/prepare-local.sh`).
+App-specific pages (e.g. `/exampleapp/`) render Askama templates under `templates/` that extend [sigma-theme](https://github.com/sigmatactical-org/sigma-theme) `base.html`. Static assets (JS, CSS) for those apps live under `files/`. Shared chrome — CSS, JS, home page, favicon — comes from the sigma-theme crate (embedded at compile time from the pinned git dependency).
 
 ## Docker
 

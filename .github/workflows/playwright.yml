@@ -39,22 +39,6 @@ jobs:
       TEST_DATABASE_URL: postgres://sigma:sigma@127.0.0.1:5432/sigma
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/sigma-theme
-          path: theme
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/sigma-pg
-          path: sigma-pg
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/human-check
-          path: human-check
-
-      - name: Prepare build
-        run: ./scripts/prepare-local.sh
-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -65,7 +49,7 @@ jobs:
         run: ./scripts/prepare-e2e-postgres.sh
 
       - name: Build identity (host)
-        run: cargo build --release -p sigma-identity
+        run: cargo build --locked --release -p sigma-identity
 
       - name: Start E2E stack
         run: ./scripts/e2e-stack.sh up

@@ -139,10 +139,12 @@ pub async fn run() -> anyhow::Result<()> {
     let keycloak_admin = KeycloakAdmin::from_env().ok();
 
     let registration = if config::registration_enabled() {
+        let human_check = sigma_human_check::HumanCheck::from_env()?;
         keycloak_admin.as_ref().map(|admin| RegistrationDeps {
             settings: profile_settings.clone(),
             admin: admin.clone(),
             adapter: RegistrationAdapter::from_env(),
+            human_check: human_check.clone(),
         })
     } else {
         None

@@ -98,21 +98,11 @@ jobs:
           exit "$missing"
 
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/sigma-theme
-          path: theme
-
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: |
-            theme/ts/package-lock.json
-            ts/package-lock.json
-
-      - name: Prepare build
-        run: ./scripts/prepare-local.sh
+          cache-dependency-path: ts/package-lock.json
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -121,7 +111,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Cargo build (release)
-        run: cargo build --release
+        run: cargo build --locked --release
 
       - name: Stage image artifacts
         run: ./scripts/prepare-image-context.sh

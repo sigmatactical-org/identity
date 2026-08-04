@@ -520,6 +520,7 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
         settings,
         admin,
         adapter,
+        human_check,
     }) = registration
     {
         app = app.merge(register_routes(
@@ -527,7 +528,7 @@ pub(crate) fn app<S: SessionStore + Clone + 'static>(
             admin,
             adapter,
             register_oidc,
-            sigma_human_check::HumanCheck::from_env(),
+            human_check,
             session_layer,
         ));
     }

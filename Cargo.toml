@@ -56,14 +56,14 @@ tower-sessions = { version = "0.15.0", features = ["private"] }
 tower-sessions-sqlx-store = { git = "https://github.com/maxcountryman/tower-sessions-stores.git", rev = "75cb75792d0a8d9231723b07e7524897201ef73b", features = ["postgres"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
 sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres"] }
-sigma-pg = { git = "https://github.com/sigmatactical-org/sigma-pg.git" }
+sigma-pg = { git = "https://github.com/sigmatactical-org/sigma-pg.git", rev = "f34cf0eed7bb450df47bedd7dfa5bb10e5f99e47" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tower = { version = "0.5.3", features = ["util"] }
 mimalloc = "0.1.52"
 rustls = { version = "0.23.42", features = ["ring"] }
-sigma-theme = { git = "https://github.com/sigmatactical-org/sigma-theme.git", default-features = false, features = ["askama", "axum"] }
-sigma-human-check = { git = "https://github.com/sigmatactical-org/human-check.git", features = ["axum"] }
+sigma-theme = { git = "https://github.com/sigmatactical-org/sigma-theme.git", rev = "1b31e85724e4de48ec5c57ecd19bebf34d87962d", default-features = false, features = ["askama", "axum"] }
+sigma-human-check = { git = "https://github.com/sigmatactical-org/human-check.git", rev = "13f8c30bd056b09765906f06c768c1bae4be189d", features = ["axum"] }
 sigma-identity-nav = { path = "nav" }
 
 [dev-dependencies]

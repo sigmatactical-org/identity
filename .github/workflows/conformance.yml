@@ -25,7 +25,6 @@ permissions:
 
 env:
   RUST_TOOLCHAIN: "1.97.0"
-  NODE_VERSION: "22"
   CARGO_TERM_COLOR: always
   CLIENT_ID: sigma-identity-conformance
   CLIENT_SECRET: conformance-client-secret-not-for-production
@@ -56,14 +55,6 @@ jobs:
       TEST_DATABASE_URL: postgres://sigma:sigma@127.0.0.1:5432/sigma
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
-        with:
-          repository: sigmatactical-org/sigma-theme
-          path: theme
-
-      - name: Prepare build
-        run: ./scripts/prepare-local.sh
-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -78,7 +69,7 @@ jobs:
 
       - name: Build identity
         run: |
-          cargo build --release -p sigma-conformance
+          cargo build --locked --release -p sigma-conformance
           ./scripts/conformance-stack.sh build
 
       - name: Run RP conformance tests

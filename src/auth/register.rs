@@ -118,7 +118,7 @@ pub(crate) async fn register_submit(
         return Err((StatusCode::BAD_REQUEST, "Invalid return_url").into_response());
     }
 
-    if let Err(err) = human_check.verify_payload_or_skip(&form.altcha) {
+    if let Err(err) = human_check.verify_payload(&form.altcha) {
         let message = sigma_human_check::rejection_message(&err);
         return Ok(render_error_page(RegisterPage::from_form(
             form,
