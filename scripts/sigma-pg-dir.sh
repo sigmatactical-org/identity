@@ -24,9 +24,36 @@ sigma_pg_dir() {
     fi
   done
 
-  echo "error: sigma-pg not found. Clone https://github.com/sigmatactical-org/sigma-pg" >&2
-  echo "       next to this repo or set SIGMA_PG_DIR to the checkout path." >&2
-  return 1
+  fetch_pinned_sigma_pg "${root}"
+}
+
+# Cache a checkout of sigma-pg at the revision this repo pins, printing its path.
+#
+# The migrations have to match the crate the service links against, and the
+# lockfile is the only place that says which revision that is. Reading it here
+# means a machine with no sibling checkout -- CI, or a fresh clone -- prepares
+# the same schema as one that has one, with nothing to keep in sync by hand.
+fetch_pinned_sigma_pg() {
+  local root="$1" rev cache
+  rev="$(sed -n 's|.*sigma-pg\.git?rev=\([0-9a-f]\{40\}\)#.*|\1|p' "${root}/Cargo.lock" | head -1)"
+  if [[ -z "${rev}" ]]; then
+    echo "error: no sigma-pg git revision in ${root}/Cargo.lock, and no checkout nearby." >&2
+    echo "       Clone https://github.com/sigmatactical-org/sigma-pg next to this repo" >&2
+    echo "       or set SIGMA_PG_DIR to it." >&2
+    return 1
+  fi
+
+  cache="${XDG_CACHE_HOME:-${HOME}/.cache}/sigma-pg-checkouts/${rev}"
+  if [[ ! -f "${cache}/migrations/001_sigma_init.sql" ]]; then
+    rm -rf "${cache}"
+    mkdir -p "${cache}"
+    git init --quiet "${cache}"
+    git -C "${cache}" fetch --quiet --depth 1 \
+      https://github.com/sigmatactical-org/sigma-pg.git "${rev}" >&2
+    git -C "${cache}" checkout --quiet FETCH_HEAD
+    echo "Fetched sigma-pg ${rev:0:12} to ${cache}" >&2
+  fi
+  printf '%s\n' "${cache}"
 }
 
 platform_dir() {

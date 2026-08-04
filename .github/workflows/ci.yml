@@ -71,13 +71,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Patch human-check dependency
-        run: |
-          mkdir -p .cargo
-          cat >.cargo/config.toml <<'EOF'
-          [patch."https://github.com/sigmatactical-org/human-check.git"]
-          sigma-human-check = { path = "human-check" }
-          EOF
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -88,13 +81,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Patch human-check dependency
-        run: |
-          mkdir -p .cargo
-          cat >.cargo/config.toml <<'EOF'
-          [patch."https://github.com/sigmatactical-org/human-check.git"]
-          sigma-human-check = { path = "human-check" }
-          EOF
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
