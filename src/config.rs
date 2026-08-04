@@ -1,5 +1,10 @@
 //! Environment configuration. Prefer `IDENTITY_*` variables; `RIDSER_*` is accepted as a
 //! deprecated fallback for upstream compatibility.
+//!
+//! Peer service URLs use [`sigma_config::service!`] (fail-fast when
+//! `SIGMA_DEV_DEFAULTS` is unset). OIDC/session secrets keep the dual-prefix
+//! [`var`] / [`var_optional`] path because they are not base URLs and still
+//! accept deprecated `RIDSER_*` names.
 
 mod registration_mode;
 pub use registration_mode::RegistrationMode;
@@ -11,6 +16,23 @@ use anyhow::{Context, Result, bail};
 use crate::session::SameSiteSetting;
 
 const MIN_SESSION_SECRET_BYTES: usize = 32;
+
+sigma_config::service! {
+    prefix = "IDENTITY";
+    role = "identity";
+    urls {
+        /// Public base URL of the cart service for navbar links.
+        cart_public_base_url = "CART_PUBLIC_URL" => "http://127.0.0.1:8084/";
+        /// Public base URL of the contact service for navbar links.
+        contact_public_base_url = "CONTACT_PUBLIC_URL" => "http://127.0.0.1:8083/";
+        /// Public base URL of the addresses service (profile account links).
+        addresses_public_base_url = "ADDRESSES_PUBLIC_URL" => "http://127.0.0.1:8089/";
+        /// Public base URL of the payments service (profile account links).
+        payments_public_base_url = "PAYMENTS_PUBLIC_URL" => "http://127.0.0.1:8090/";
+        /// Public base URL of the orders service (profile account links).
+        orders_public_base_url = "ORDERS_PUBLIC_URL" => "http://127.0.0.1:8085/";
+    }
+}
 
 /// Read `IDENTITY_{name}` or fall back to deprecated `RIDSER_{name}`.
 pub fn var(name: &str) -> Result<String> {
@@ -70,6 +92,10 @@ pub fn listen_port() -> String {
 }
 
 /// PostgreSQL connection URL for sessions and health checks.
+///
+/// Identity uses the prefixed `IDENTITY_DATABASE_URL` (with deprecated
+/// `RIDSER_DATABASE_URL` fallback), not the unprefixed `DATABASE_URL` shared by
+/// the other services.
 pub fn database_url() -> String {
     var_optional("DATABASE_URL").unwrap_or_else(|| sigma_pg::service_database_url("identity"))
 }
@@ -226,54 +252,6 @@ pub fn registration_return_uris() -> Result<Vec<String>> {
         var("LOGIN_REDIRECT_APP_URIS")?
     };
     Ok(split_list(&raw))
-}
-
-fn normalize_service_base_url(url: &str) -> String {
-    let mut url = url.trim().to_string();
-    if !url.ends_with('/') {
-        url.push('/');
-    }
-    url
-}
-
-/// Public base URL of the cart service for navbar links.
-pub fn cart_public_base_url() -> String {
-    var_optional("CART_PUBLIC_URL")
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| normalize_service_base_url(&value))
-        .unwrap_or_else(|| "http://127.0.0.1:8084/".to_string())
-}
-
-/// Public base URL of the contact service for navbar links.
-pub fn contact_public_base_url() -> String {
-    var_optional("CONTACT_PUBLIC_URL")
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| normalize_service_base_url(&value))
-        .unwrap_or_else(|| "http://127.0.0.1:8083/".to_string())
-}
-
-/// Public base URL of the addresses service (profile account links).
-pub fn addresses_public_base_url() -> String {
-    var_optional("ADDRESSES_PUBLIC_URL")
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| normalize_service_base_url(&value))
-        .unwrap_or_else(|| "http://127.0.0.1:8089/".to_string())
-}
-
-/// Public base URL of the payments service (profile account links).
-pub fn payments_public_base_url() -> String {
-    var_optional("PAYMENTS_PUBLIC_URL")
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| normalize_service_base_url(&value))
-        .unwrap_or_else(|| "http://127.0.0.1:8090/".to_string())
-}
-
-/// Public base URL of the orders service (profile account links).
-pub fn orders_public_base_url() -> String {
-    var_optional("ORDERS_PUBLIC_URL")
-        .filter(|value| !value.trim().is_empty())
-        .map(|value| normalize_service_base_url(&value))
-        .unwrap_or_else(|| "http://127.0.0.1:8085/".to_string())
 }
 
 /// Realm roles that grant access to `/admin/*` (comma-separated). Defaults to

@@ -94,6 +94,9 @@ fn init_session_vars() -> anyhow::Result<SessionSetup> {
 }
 
 pub async fn run() -> anyhow::Result<()> {
+    // Peer chrome URLs: fail fast unless SIGMA_DEV_DEFAULTS=1. OIDC/session
+    // secrets still fail via the dual-prefix `config::var` path below.
+    config::validate()?;
     let session_setup = init_session_vars()?;
     let database_url = config::database_url();
     let pool = postgres_pool(&database_url).await?;

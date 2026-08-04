@@ -64,7 +64,7 @@ See `.env.default` for the full list including proxy routing rules.
 - Proxy routes require an authenticated session and a valid CSRF token on every method except `OPTIONS`.
 - Response security headers are set on all routes.
 
-## What identity needs to run
+## Development
 
 sigma-identity is a stateless BFF except for **PostgreSQL sessions**. It does not store users in a database — the OIDC provider (Keycloak in dev) holds identity; PostgreSQL holds session cookies → tokens.
 
@@ -137,6 +137,21 @@ rewrites `Cargo.lock` into path form — don't commit that; `platform`'s
 Bumping a shared crate is `platform/scripts/pin-shared-revs.sh <crate>` after
 that crate is pushed, which updates every consumer's pin at once.
 
+### File serving
+
+App-specific pages (e.g. `/exampleapp/`) render Askama templates under `templates/` that extend [sigma-theme](https://github.com/sigmatactical-org/sigma-theme) `base.html`. Static assets (JS, CSS) for those apps live under `files/`. Shared chrome — CSS, JS, home page, favicon — comes from the sigma-theme crate (embedded at compile time from the pinned git dependency).
+
+### Upstream
+
+Track upstream changes:
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+Remote `upstream` points at [ErikWegner/rust-identity-service](https://github.com/ErikWegner/rust-identity-service).
+
 ## Testing
 
 Unit tests require PostgreSQL (no in-memory or alternate backends):
@@ -181,10 +196,6 @@ Runs the [OpenID Foundation conformance suite](https://gitlab.com/openid/conform
 
 CI (`.github/workflows/conformance.yml`): full dev plan on `main` pushes; all plans weekly; manual dispatch with optional `plan` input.
 
-## File serving
-
-App-specific pages (e.g. `/exampleapp/`) render Askama templates under `templates/` that extend [sigma-theme](https://github.com/sigmatactical-org/sigma-theme) `base.html`. Static assets (JS, CSS) for those apps live under `files/`. Shared chrome — CSS, JS, home page, favicon — comes from the sigma-theme crate (embedded at compile time from the pinned git dependency).
-
 ## Docker
 
 Release is entirely in **`.github/workflows/release.yml`**: GitHub Actions builds the Rust binary, `prepare-image-context.sh` copies artifacts into `build/image/`, then `docker build` (COPY-only Dockerfile) pushes to GHCR and Artifact Registry.
@@ -199,17 +210,6 @@ docker build -f Dockerfile build/image
 ```
 
 Local dev and E2E dependencies use Debian bookworm where possible (PostgreSQL, echo, Traefik). Keycloak is upstream UBI (dev-only).
-
-## Upstream
-
-Track upstream changes:
-
-```bash
-git fetch upstream
-git merge upstream/main
-```
-
-Remote `upstream` points at [ErikWegner/rust-identity-service](https://github.com/ErikWegner/rust-identity-service).
 
 ## Brand & artwork
 

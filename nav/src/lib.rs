@@ -16,6 +16,7 @@ pub use auth_links::AuthLinks;
 pub(crate) use auth_nav_template::AuthNavTemplate;
 
 use askama::Template;
+use sigma_config::join_url;
 use urlencoding::encode as percent_encode;
 
 /// Build the identity URLs that return the user to `return_path` on the calling
@@ -64,15 +65,6 @@ pub fn render_auth_nav(links: &AuthLinks) -> Result<String, askama::Error> {
         profile_url: &links.profile_url,
     }
     .render()
-}
-
-fn join_url(base: &str, path: &str) -> String {
-    let base = base.trim_end_matches('/');
-    if path == "/" || path.is_empty() {
-        return format!("{base}/");
-    }
-    let path = path.trim_start_matches('/');
-    format!("{base}/{path}")
 }
 
 #[cfg(test)]

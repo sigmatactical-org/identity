@@ -13,6 +13,7 @@ publish = false
 
 [dependencies]
 askama = "0.16.0"
+sigma-config = { git = "https://github.com/sigmatactical-org/config.git", rev = "551ccb7957c34a440e5c5e95a78b738c1c62a932" }
 urlencoding = "2.1.3"
 
 [package.metadata.askama]
