@@ -56,7 +56,7 @@ tower-sessions = { version = "0.15.0", features = ["private"] }
 tower-sessions-sqlx-store = { git = "https://github.com/maxcountryman/tower-sessions-stores.git", rev = "75cb75792d0a8d9231723b07e7524897201ef73b", features = ["postgres"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json"] }
 sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres"] }
-sigma-pg = { git = "https://github.com/sigmatactical-org/sigma-pg.git", rev = "2b20d1d5d5daab1771fce238946037fdde43c907" }
+sigma-pg = { git = "https://github.com/sigmatactical-org/sigma-pg.git", rev = "532a31e1d0f9084b8eb8dc51083a5e6899df1b40" }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tower = { version = "0.5.3", features = ["util"] }
