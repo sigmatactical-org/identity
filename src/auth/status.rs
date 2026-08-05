@@ -8,7 +8,7 @@ use crate::session::SESSION_KEY_JWT;
 
 use super::SessionTokens;
 
-fn status_response_map(session_tokens: Option<SessionTokens>) -> StatusResponse {
+fn status_response_map(session_tokens: Option<SessionTokens>, is_admin: bool) -> StatusResponse {
     session_tokens
         .map(|st| {
             let now = std::time::SystemTime::now();
@@ -20,6 +20,7 @@ fn status_response_map(session_tokens: Option<SessionTokens>) -> StatusResponse 
                     .map(|d| d.as_secs())
                     .ok(),
                 authenticated: true,
+                is_admin,
                 username: st.display_name(),
                 email: st.email(),
                 user_id: st.subject(),
@@ -29,6 +30,7 @@ fn status_response_map(session_tokens: Option<SessionTokens>) -> StatusResponse 
             expires_in: None,
             refresh_expires_in: None,
             authenticated: false,
+            is_admin: false,
             username: None,
             email: None,
             user_id: None,
@@ -41,8 +43,8 @@ pub(crate) async fn status(session: Session) -> Json<StatusResponse> {
         .await
         .unwrap_or_default()
         .unwrap_or_default();
-    let p = status_response_map(session_tokens);
-    Json(p)
+    let is_admin = super::is_admin(&session).await;
+    Json(status_response_map(session_tokens, is_admin))
 }
 
 #[cfg(test)]
@@ -88,6 +90,7 @@ mod tests {
         let s: StatusResponse =
             serde_json::from_str(body.as_str()).expect("Body should deserialize");
         assert!(!s.authenticated, "Should not be authenticated");
+        assert!(!s.is_admin, "Anonymous sessions are never admin");
     }
 
     #[tokio::test]
@@ -137,5 +140,6 @@ mod tests {
         );
         assert_eq!(s.username.as_deref(), Some("bob"));
         assert_eq!(s.email.as_deref(), Some("bob@example.com"));
+        assert!(!s.is_admin, "Mock bob is not an admin");
     }
 }
